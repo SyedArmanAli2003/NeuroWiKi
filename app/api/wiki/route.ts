@@ -5,13 +5,21 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    // SourceListResponse is typed as `unknown` in the SDK — cast to extract items
-    const response = (await hydra.fetch.listData({
-      tenant_id: 'default',
-      kind: 'knowledge',
-      page: 1,
-      page_size: 100,
-    })) as any
+    let response: any = {}
+    try {
+      response = (await hydra.fetch.listData({
+        tenant_id: 'default',
+        kind: 'knowledge',
+        page: 1,
+        page_size: 100,
+      })) as any
+    } catch (e: any) {
+      if (e.message?.includes('Tenant default does not exist') || e.status === 404) {
+        console.warn('Tenant default does not exist yet.')
+      } else {
+        throw e
+      }
+    }
 
     const items: any[] = response?.results ?? response?.data ?? response?.items ?? []
 

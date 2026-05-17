@@ -126,11 +126,16 @@
   }
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
   }
   html {
     @apply font-sans;
   }
 }
+
+/* Hide scrollbar everywhere */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
 * { font-family: 'Almarai', -apple-system, BlinkMacSystemFont, sans-serif; }
 

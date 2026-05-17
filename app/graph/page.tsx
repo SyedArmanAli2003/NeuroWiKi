@@ -88,7 +88,7 @@ export default function GraphPage() {
       <div className="absolute top-4 left-4 z-10 pointer-events-none">
         <p className="text-xs" style={{ color: 'rgba(222,219,200,0.4)' }}>NeuroWiki Graph</p>
         <p className="text-[10px]" style={{ color: 'rgba(222,219,200,0.2)' }}>
-          {graphData.nodes.length} pages · {graphData.links.length} connections
+          {graphData?.nodes?.length ?? 0} pages · {graphData?.links?.length ?? 0} connections
         </p>
       </div>
 
