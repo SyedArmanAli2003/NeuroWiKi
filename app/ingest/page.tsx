@@ -14,6 +14,7 @@ const INITIAL_STEPS: Step[] = [
   { label: 'AI is analyzing content...', status: 'pending' },
   { label: 'Writing wiki pages...', status: 'pending' },
   { label: 'Linking to knowledge graph...', status: 'pending' },
+  { label: 'Indexing in progress...', status: 'pending' },
 ]
 
 export default function IngestPage() {
@@ -24,6 +25,7 @@ export default function IngestPage() {
   const [steps, setSteps] = useState<Step[]>(INITIAL_STEPS)
   const [results, setResults] = useState<ResultPage[]>([])
   const [done, setDone] = useState(false)
+  const [warning, setWarning] = useState<string | null>(null)
 
   const advanceStep = (index: number) => {
     setSteps(prev => prev.map((s, i) => ({
@@ -38,6 +40,7 @@ export default function IngestPage() {
 
     setLoading(true)
     setDone(false)
+    setWarning(null)
     setResults([])
     setSteps(INITIAL_STEPS.map((s, i) => ({ ...s, status: i === 0 ? 'active' : 'pending' })))
 
@@ -52,14 +55,22 @@ export default function IngestPage() {
       })
 
       advanceStep(3)
-      const data = await res.json()
+      setTimeout(() => advanceStep(4), 1000)
+      
+      const textResponse = await res.text()
+      const lines = textResponse.split('\n').filter(Boolean)
+      const finalLine = lines[lines.length - 1]
+      const data = JSON.parse(finalLine)
+      
       setTimeout(() => {
         setSteps(prev => prev.map(s => ({ ...s, status: 'done' })))
         setResults(data.pages || [])
+        if (data.warning) setWarning(data.warning)
         setDone(true)
         setLoading(false)
       }, 600)
-    } catch {
+    } catch (e) {
+      console.error(e)
       setLoading(false)
     }
   }
@@ -162,6 +173,14 @@ export default function IngestPage() {
             <p className="text-[9px] tracking-[0.3em] uppercase mb-4" style={{ color: 'rgba(222,219,200,0.3)' }}>
               Pages Created
             </p>
+            {warning && (
+              <div className="mb-4 bg-amber-950/30 border border-amber-900/50 rounded-xl p-3 flex items-start gap-3">
+                <span className="text-amber-500 text-xs mt-0.5">⚠️</span>
+                <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                  {warning}
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               {results.map((page, i) => (
                 <FadeUp key={page.slug} delay={i * 0.08}>

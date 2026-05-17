@@ -3,6 +3,8 @@ import { Readability } from '@mozilla/readability'
 import { JSDOM } from 'jsdom'
 import { createSource, createLog } from '@/lib/db-helpers'
 import { runIngestAgent } from '@/lib/agents/ingest-agent'
+import { runConsistencyCheck } from '@/lib/agents/consistency-agent'
+import { hydra } from '@/lib/hydra'
 
 export async function POST(req: NextRequest) {
   const encoder = new TextEncoder()
@@ -69,7 +71,44 @@ export async function POST(req: NextRequest) {
           message: `Successfully created ${result.pagesCreated} pages.`
         })
 
-        send(JSON.stringify({ final: true, pagesCreated: result.pagesCreated, pages: result.pages }))
+        send("Checking consistency...")
+        let allExistingSlugs: string[] = []
+        try {
+          const res = (await hydra.fetch.listData({
+            tenant_id: 'default',
+            kind: 'knowledge',
+            page: 1,
+            page_size: 100,
+          })) as any
+          const items: any[] = res?.results ?? res?.data ?? res?.items ?? []
+          allExistingSlugs = items.map((item: any) => (item.additional_metadata?.slug as string) || item.id)
+        } catch (e) {
+          console.warn("Failed to fetch all slugs for consistency check", e)
+        }
+        
+        const newSlugs = result.pages.map(n => n.slug)
+        const existingSlugs = allExistingSlugs.filter(slug => !newSlugs.includes(slug))
+
+        const consistency = await runConsistencyCheck(
+          result.pages,
+          existingSlugs.slice(0, 20)
+        )
+
+        const warningMessage = result.pages.some(p => !p.indexed)
+          ? 'Some pages may still be indexing. Wait 30s before querying.'
+          : null
+        
+        send(JSON.stringify({
+          final: true,
+          pagesCreated: result.pagesCreated,
+          pages: result.pages,
+          warning: warningMessage,
+          consistency: {
+            contradictionsFound: consistency.contradictions,
+            pagesAutoUpdated: consistency.updated,
+            pagesFlaggedForReview: consistency.flagged,
+          }
+        }))
         controller.close()
       } catch (error: any) {
         send(JSON.stringify({ error: error.message || 'Unknown error occurred' }))

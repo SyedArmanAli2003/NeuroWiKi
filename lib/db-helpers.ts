@@ -36,6 +36,20 @@ export type CreateSourceInput = Omit<Source, 'id' | 'created_at' | 'processed'> 
 
 export type CreateLogInput = Omit<Log, 'id' | 'created_at'>
 
+export interface PageHealth {
+  id: number
+  slug: string
+  title: string
+  type: string
+  confidence: number
+  last_validated: string
+  is_stale: number
+  stale_reason: string | null
+  hydra_doc_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ---------------------------------------------------------------------------
 // Sources
 // ---------------------------------------------------------------------------
@@ -158,4 +172,72 @@ export function getLogsBySourceId(sourceId: number): Log[] {
        ORDER BY created_at DESC`
     )
     .all(sourceId)
+}
+
+// ---------------------------------------------------------------------------
+// Pages (Wiki Health Deprecation Pipeline)
+// ---------------------------------------------------------------------------
+
+export function upsertPageHealth(data: { slug: string; title: string; type?: string; confidence?: number; stale_reason?: string | null; hydra_doc_id: string }): void {
+  db.prepare(`
+    INSERT INTO pages (slug, title, type, confidence, is_stale, stale_reason, hydra_doc_id, last_validated)
+    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(slug) DO UPDATE SET
+      title = excluded.title,
+      type = excluded.type,
+      confidence = excluded.confidence,
+      is_stale = excluded.is_stale,
+      stale_reason = excluded.stale_reason,
+      hydra_doc_id = excluded.hydra_doc_id,
+      last_validated = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(
+    data.slug,
+    data.title,
+    data.type ?? 'concept',
+    data.confidence ?? 100,
+    data.stale_reason ? 1 : 0,
+    data.stale_reason ?? null,
+    data.hydra_doc_id
+  )
+}
+
+export function getAllPages(): PageHealth[] {
+  return db.prepare<[], PageHealth>(`SELECT * FROM pages ORDER BY created_at DESC`).all()
+}
+
+export function getFlaggedPages(): PageHealth[] {
+  return db.prepare<[], PageHealth>(`
+    SELECT * FROM pages 
+    WHERE is_stale = 1 
+    ORDER BY confidence ASC
+  `).all()
+}
+
+export function getStalePages(olderThanDays = 30): PageHealth[] {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - olderThanDays)
+  return db.prepare<[string], PageHealth>(`
+    SELECT * FROM pages 
+    WHERE last_validated < ? 
+    ORDER BY last_validated ASC
+  `).all(cutoff.toISOString())
+}
+
+export function markPageStale(slug: string, reason: string): void {
+  db.prepare<[string, string]>(`
+    UPDATE pages SET is_stale = 1, stale_reason = ?, confidence = confidence - 20, updated_at = CURRENT_TIMESTAMP
+    WHERE slug = ?
+  `).run(reason, slug)
+}
+
+export function archivePage(slug: string): void {
+  db.prepare<[string]>(`UPDATE pages SET is_stale = 1, confidence = 0, updated_at = CURRENT_TIMESTAMP WHERE slug = ?`).run(slug)
+}
+
+export function restorePage(slug: string): void {
+  db.prepare<[string]>(`
+    UPDATE pages SET is_stale = 0, stale_reason = NULL, confidence = 80,
+    last_validated = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE slug = ?
+  `).run(slug)
 }

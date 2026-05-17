@@ -1,76 +1,88 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { streamText } from 'ai'
-import { google } from '@ai-sdk/google'
 import { hydra } from '@/lib/hydra'
+import { google } from '@ai-sdk/google'
+import { streamText } from 'ai'
+import { db } from '@/lib/db'
 
-export const maxDuration = 30
+export async function POST(req: Request) {
+  const { question } = await req.json()
+  if (!question?.trim()) return Response.json({ error: 'No question' }, { status: 400 })
 
-export async function POST(req: NextRequest) {
+  // Strategy 1: Try graph-aware recall first (uses entity relationships)
+  let contextPages: any[] = []
+  let recallStrategy = 'vector'
+
   try {
-    const { question } = await req.json()
-
-    if (!question) {
-      return NextResponse.json({ error: 'Question is required' }, { status: 400 })
-    }
-
-    // 1. Smart Retrieval with HydraDB
-    const recallResponse = await hydra.recall.fullRecall({
-      tenant_id: 'default',
+    const graphRecall = await (hydra as any).recall({
       query: question,
-      max_results: 5,
-      graph_context: true,
+      limit: 8,
+      graph_context: true,   // uses graph relationships not just vector similarity
     })
-
-    const sources: any[] = recallResponse.sources ?? []
-
-    // Format context for Gemini
-    let contextText = ''
-    const citations: Array<{ slug: string; title: string }> = []
-
-    for (const source of sources) {
-      const title = source.title ?? 'Unknown'
-      const slug = (source.additional_metadata?.slug as string) ?? source.id
-      const content = source.description ?? ''
-
-      contextText += `\n\n--- Source: ${title} ---\n${content}`
-      citations.push({ slug, title })
+    
+    if (graphRecall?.results?.length > 0) {
+      contextPages = graphRecall.results
+      recallStrategy = 'graph_context'
     }
-
-    // Also pull text from chunks if sources description is empty
-    const chunks = recallResponse.chunks ?? []
-    if (!contextText.trim() && chunks.length > 0) {
-      for (const chunk of chunks) {
-        contextText += `\n\n--- ${chunk.source_title ?? 'Source'} ---\n${chunk.chunk_content}`
-        const slug = (chunk.additional_metadata?.slug as string) ?? chunk.source_id
-        citations.push({ slug, title: chunk.source_title ?? 'Source' })
-      }
-    }
-
-    // 2. Build Prompt
-    const systemPrompt = `You are a helpful knowledge wiki assistant. 
-Answer the user's question using ONLY the provided context. 
-If the context doesn't contain the answer, say "I don't have enough information in the wiki to answer this."
-When you use information from the context, naturally weave in the source titles.
-
-Context:
-${contextText}
-`
-
-    // 3. Stream Gemini Answer Back
-    const result = streamText({
-      model: google('gemini-1.5-pro'),
-      system: systemPrompt,
-      prompt: question,
-    })
-
-    return result.toTextStreamResponse({
-      headers: {
-        'x-citations': JSON.stringify(citations),
-      },
-    })
-  } catch (error: any) {
-    console.error('Error in query route:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch {
+    // Graph recall failed, fall back to vector
   }
-}
 
+  // Strategy 2: Fall back to pure vector if graph returned nothing
+  if (contextPages.length === 0) {
+    try {
+      const vectorRecall = await (hydra as any).recall({
+        query: question,
+        limit: 6,
+      })
+      contextPages = vectorRecall?.results || []
+      recallStrategy = 'vector_fallback'
+    } catch {
+      // Both failed — fall back to SQLite keyword search
+      const { getAllPages } = await import('@/lib/db-helpers')
+      const allPages = getAllPages()
+      const words = question.toLowerCase().split(' ').filter((w: string) => w.length > 3)
+      contextPages = allPages
+        .filter((p: any) => words.some((w: string) => 
+          p.title?.toLowerCase().includes(w) || 
+          p.summary?.toLowerCase().includes(w)
+        ))
+        .slice(0, 6)
+        .map((p: any) => ({ content: p.content, metadata: p }))
+      recallStrategy = 'sqlite_fallback'
+    }
+  }
+
+  // Log the query for observability
+  db.prepare(`
+    INSERT INTO query_logs 
+    (question, pages_considered, pages_used, recall_strategy)
+    VALUES (?, ?, ?, ?)
+  `).run(question, contextPages.length, contextPages.length, recallStrategy)
+
+  if (contextPages.length === 0) {
+    return Response.json({
+      error: 'No relevant pages found in wiki. Add more sources first.',
+      strategy: recallStrategy
+    }, { status: 404 })
+  }
+
+  const context = contextPages
+    .map((r: { content?: string; metadata?: { title?: string } }, i: number) => 
+      `[Page ${i + 1}${r.metadata?.title ? ` — ${r.metadata.title}` : ''}]:\n${r.content || ''}`
+    )
+    .join('\n\n---\n\n')
+
+  const systemPrompt = `You are a wiki assistant that ONLY answers from the provided wiki pages.
+Never use outside knowledge.
+Always cite which page your answer comes from using format: (Source: Page N — Title)
+If the answer is not in the wiki, say "This isn't covered in the wiki yet. Try adding more sources."
+Keep answers concise and factual.`
+
+  const stream = streamText({
+    model: google('gemini-2.0-flash'),
+    system: systemPrompt,
+    prompt: `Question: ${question}\n\nWiki context:\n${context}`,
+    maxTokens: 600,
+  })
+
+  return stream.toTextStreamResponse()
+}

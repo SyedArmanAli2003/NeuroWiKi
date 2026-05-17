@@ -54,6 +54,32 @@ function createTables(db: Database.Database): void {
       message       TEXT,
       created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- Local cache/metadata for HydraDB wiki pages (deprecation pipeline)
+    CREATE TABLE IF NOT EXISTS pages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      type TEXT DEFAULT 'concept',
+      confidence INTEGER DEFAULT 100,
+      last_validated DATETIME DEFAULT CURRENT_TIMESTAMP,
+      is_stale INTEGER DEFAULT 0,
+      stale_reason TEXT,
+      hydra_doc_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Traced query logs for observability
+    CREATE TABLE IF NOT EXISTS query_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      question TEXT NOT NULL,
+      pages_considered INTEGER DEFAULT 0,
+      pages_used INTEGER DEFAULT 0,
+      answer_length INTEGER DEFAULT 0,
+      recall_strategy TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `)
 }
 

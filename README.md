@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NeuroWiki
 
-## Getting Started
+> Your personal AI-powered Wikipedia. Add any source — URL, PDF, or text — 
+> and an AI agent automatically builds, maintains, and interlinks a 
+> living knowledge base that gets smarter with everything you add.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## What It Does
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+NeuroWiki solves the core problem Andrej Karpathy identified: normal RAG 
+re-derives knowledge from scratch every query. NeuroWiki compiles your 
+sources into a persistent, interlinked wiki once — then answers from it 
+cheaply, forever.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Every time you add a source:
+1. Gemini reads and extracts verified, cited knowledge
+2. HydraDB builds a context graph automatically
+3. A consistency agent checks for contradictions with existing pages
+4. Pages are interlinked with [[wikilinks]] and connected in a graph
+5. The wiki gets smarter — it never forgets, and it knows when it's wrong
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Tech Stack
 
-To learn more about Next.js, take a look at the following resources:
+| Layer | Tool | Purpose |
+|-------|------|---------|
+| Framework | Next.js 15 (App Router) | Full-stack — frontend + API routes in one |
+| Language | TypeScript | End-to-end type safety |
+| Styling | Tailwind CSS + shadcn/ui | Utility-first + pre-built components |
+| Design System | Almarai + Instrument Serif | Cinematic dark UI inspired by Prisma Studio |
+| Animation | Framer Motion | WordsPullUp, FadeUp, card stagger entrances |
+| AI Model | Google Gemini 2.0 Flash | Page generation, consistency checking, Q&A |
+| AI SDK | Vercel AI SDK (@ai-sdk/google) | Streaming, generateObject, structured outputs |
+| Knowledge Store | HydraDB (@hydra_db/node) | Entity graph, hybrid recall, context memory |
+| Local DB | SQLite (better-sqlite3) | Sources, logs, health metadata, query logs |
+| Graph View | react-force-graph-2d | Interactive knowledge graph visualization |
+| Markdown | react-markdown + remark-gfm | Wiki page rendering with [[wikilink]] support |
+| Schema | Zod | AI response validation, hallucination prevention |
+| Deployment | Google Cloud Run | Serverless, scales to zero, $0 at hackathon scale |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Architecture
