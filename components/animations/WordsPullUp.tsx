@@ -11,7 +11,7 @@ interface Props {
 
 export function WordsPullUp({ text, className = '', style = {}, delay = 0 }: Props) {
   const ref = useRef(null)
-  const isInView = useInView(ref, { once: true })
+  const isInView = useInView(ref, { once: true, amount: 0.1 })
   const words = text.split(' ')
 
   return (

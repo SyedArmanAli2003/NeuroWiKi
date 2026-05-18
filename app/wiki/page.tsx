@@ -1,11 +1,12 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { WordsPullUp } from '@/components/animations/WordsPullUp'
 import { FadeUp } from '@/components/animations/FadeUp'
 import { TypeBadge } from '@/components/TypeBadge'
 import { motion, useInView } from 'framer-motion'
 import { useRef } from 'react'
+import { Download } from 'lucide-react'
 
 const TYPES = ['All', 'concept', 'person', 'place', 'event', 'tool', 'organization']
 
@@ -65,16 +66,29 @@ export default function WikiBrowserPage() {
     })
   }, [])
 
-  const filtered = pages.filter(p => {
-    const matchType = filter === 'All' || p.type === filter
-    const matchSearch = p.title.toLowerCase().includes(search.toLowerCase()) ||
-      p.summary?.toLowerCase().includes(search.toLowerCase())
-    return matchType && matchSearch
-  })
+  const filtered = useMemo(() => 
+    pages.filter(p => {
+      const matchType = filter === 'All' || p.type === filter
+      const matchSearch = p.title.toLowerCase().includes(search.toLowerCase()) ||
+        (p.summary || '').toLowerCase().includes(search.toLowerCase())
+      return matchType && matchSearch
+    }), [pages, filter, search]
+  )
 
   return (
     <div className="bg-black min-h-screen flex flex-col">
-      <div className="py-16 px-8 border-b border-white/5">
+      <div className="py-16 px-8 border-b border-white/5 relative">
+        <div className="absolute top-8 right-8">
+          <a
+            href="/api/export"
+            download="neurowiki-export.zip"
+            className="flex items-center gap-2 text-[10px] tracking-wider uppercase px-3 py-1.5 rounded-full border border-white/10 hover:border-white/25 transition"
+            style={{ color: 'rgba(222,219,200,0.4)' }}
+          >
+            <Download size={11} />
+            Export
+          </a>
+        </div>
         <h1 className="font-medium leading-[0.9]" style={{ fontSize: 'clamp(2.5rem, 6vw, 5rem)', color: '#E1E0CC' }}>
           <WordsPullUp text="Everything you know." />
         </h1>
