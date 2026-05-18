@@ -1,14 +1,8 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
-import { WordsPullUp } from '@/components/animations/WordsPullUp'
-import { FadeUp } from '@/components/animations/FadeUp'
-import { TypeBadge } from '@/components/TypeBadge'
-import { motion, useInView } from 'framer-motion'
-import { useRef } from 'react'
-import { ArrowRight, Download } from 'lucide-react'
-
-const TYPES = ['All', 'concept', 'person', 'place', 'event', 'tool', 'organization']
+import { motion } from 'framer-motion'
+import { Download, ArrowRight } from 'lucide-react'
 
 interface Page {
   slug: string
@@ -18,33 +12,84 @@ interface Page {
   updated_at: string
 }
 
-function PageCard({ page, index }: { page: Page; index: number }) {
-  const ref = useRef(null)
-  const isInView = useInView(ref, { once: true, margin: '-80px' })
+const TYPE_COLORS: Record<string, { color: string; bg: string; border: string }> = {
+  concept:      { color: '#C7B8FF', bg: 'rgba(199,184,255,0.07)', border: 'rgba(199,184,255,0.22)' },
+  person:       { color: '#9BDCAA', bg: 'rgba(155,220,170,0.07)', border: 'rgba(155,220,170,0.22)' },
+  place:        { color: '#F4C77B', bg: 'rgba(244,199,123,0.07)', border: 'rgba(244,199,123,0.22)' },
+  event:        { color: '#F49B9B', bg: 'rgba(244,155,155,0.07)', border: 'rgba(244,155,155,0.22)' },
+  tool:         { color: '#7BD0E8', bg: 'rgba(123,208,232,0.07)', border: 'rgba(123,208,232,0.22)' },
+  organization: { color: '#B4B0F0', bg: 'rgba(180,176,240,0.07)', border: 'rgba(180,176,240,0.22)' },
+  diary:        { color: '#DEDBC8', bg: 'rgba(222,219,200,0.05)', border: 'rgba(222,219,200,0.16)' },
+}
 
+const TYPE_ORDER = ['concept', 'person', 'place', 'event', 'tool', 'organization']
+
+function relDate(iso: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
+  const diffMs = Date.now() - d.getTime()
+  const days = Math.round(diffMs / 86400000)
+  if (days === 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 7) return `${days}d ago`
+  if (days < 30) return `${Math.round(days / 7)}w ago`
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function PageCard({ page, index }: { page: Page; index: number }) {
+  const tc = TYPE_COLORS[page.type] ?? TYPE_COLORS.concept
   return (
     <motion.div
-      ref={ref}
-      initial={{ scale: 0.97, opacity: 0 }}
-      animate={isInView ? { scale: 1, opacity: 1 } : {}}
-      transition={{ duration: 0.5, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: Math.min(index * 0.025, 0.4), ease: [0.16, 1, 0.3, 1] }}
     >
-      <Link href={`/wiki/${page.slug}`}>
-        <div className="bg-[#212121] rounded-2xl p-5 cursor-pointer hover:bg-[#282828] hover:-translate-y-0.5 transition-all duration-200 h-full flex flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <TypeBadge type={page.type} />
-            <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.15)' }}>#{index + 1}</span>
-          </div>
-          <h3 className="text-base font-medium mb-2" style={{ color: '#E1E0CC' }}>{page.title}</h3>
-          <p className="text-[11px] leading-relaxed line-clamp-3 mb-4 flex-1" style={{ color: 'rgba(222,219,200,0.45)' }}>
+      <Link href={`/wiki/${page.slug}`} className="block app-card flex flex-col" style={{ minHeight: '160px', height: '100%' }}>
+        <div className="flex items-center justify-between mb-3">
+          <span
+            className="rounded capitalize"
+            style={{
+              padding: '2px 8px',
+              fontSize: 'var(--fs-micro)',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: tc.color,
+              background: tc.bg,
+              border: `1px solid ${tc.border}`,
+            }}
+          >
+            {page.type}
+          </span>
+        </div>
+
+        <h3 style={{ fontSize: 'var(--fs-body-sm)', fontWeight: 500, color: 'var(--ink-strong)', lineHeight: 1.3, letterSpacing: '-0.005em', marginBottom: '6px' }}>
+          {page.title}
+        </h3>
+
+        {page.summary && (
+          <p
+            style={{
+              fontSize: 'var(--fs-meta)',
+              color: 'var(--ink-soft)',
+              lineHeight: 1.55,
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              flex: 1,
+            }}
+          >
             {page.summary}
           </p>
-          <div className="mt-auto pt-3 border-t border-white/5 flex items-center justify-between">
-            <span className="text-[9px]" style={{ color: 'rgba(222,219,200,0.3)' }}>
-              {(() => { const d = new Date(page.updated_at); return page.updated_at && !isNaN(d.getTime()) ? d.toLocaleDateString() : '—' })()}
-            </span>
-            <span className="text-[11px]" style={{ color: 'rgba(222,219,200,0.3)' }}>→</span>
-          </div>
+        )}
+
+        <div
+          className="flex items-center justify-between font-mono mt-auto pt-3"
+          style={{ fontSize: 'var(--fs-micro)', color: 'var(--ink-mute)', letterSpacing: '0.02em', borderTop: '1px solid var(--hair)' }}
+        >
+          <span>{relDate(page.updated_at)}</span>
+          <span style={{ color: 'var(--ink-soft)' }}>→</span>
         </div>
       </Link>
     </motion.div>
@@ -53,107 +98,247 @@ function PageCard({ page, index }: { page: Page; index: number }) {
 
 export default function WikiBrowserPage() {
   const [pages, setPages] = useState<Page[]>([])
-  const [filter, setFilter] = useState('All')
+  const [captures, setCaptures] = useState<Page[]>([])
+  const [tab, setTab] = useState<'pages' | 'captures'>('pages')
+  const [filter, setFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/wiki').then(r => r.json()).then(data => {
-      setPages(data.pages || [])
-      setLoading(false)
-    }).catch(() => {
-      setLoading(false)
-    })
+    Promise.all([
+      fetch('/api/wiki').then((r) => r.json()),
+      fetch('/api/wiki?onlyDiary=1').then((r) => r.json()),
+    ])
+      .then(([all, diary]) => {
+        setPages(all.pages ?? [])
+        setCaptures(diary.pages ?? [])
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
   }, [])
 
-  const filtered = useMemo(() => 
-    pages.filter(p => {
-      const matchType = filter === 'All' || p.type === filter
-      const matchSearch = p.title.toLowerCase().includes(search.toLowerCase()) ||
-        (p.summary || '').toLowerCase().includes(search.toLowerCase())
-      return matchType && matchSearch
-    }), [pages, filter, search]
+  const source = tab === 'captures' ? captures : pages
+
+  const counts: Record<string, number> = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const p of source) c[p.type] = (c[p.type] ?? 0) + 1
+    return c
+  }, [source])
+
+  const filtered = useMemo(
+    () =>
+      source.filter((p) => {
+        if (filter && p.type !== filter) return false
+        if (search) {
+          const q = search.toLowerCase()
+          if (!p.title.toLowerCase().includes(q) && !(p.summary || '').toLowerCase().includes(q)) return false
+        }
+        return true
+      }),
+    [source, filter, search],
   )
 
+  // Auto-group by type when on Pages tab with no filter and no search
+  const grouped = useMemo(() => {
+    if (tab !== 'pages' || filter || search) return null
+    const buckets: Record<string, Page[]> = {}
+    for (const p of filtered) {
+      const t = p.type || 'concept'
+      if (!buckets[t]) buckets[t] = []
+      buckets[t].push(p)
+    }
+    return TYPE_ORDER.filter((t) => buckets[t]?.length).map((t) => ({ type: t, items: buckets[t] }))
+  }, [filtered, tab, filter, search])
+
   return (
-    <div className="bg-black min-h-screen flex flex-col">
-      <div className="py-16 px-8 border-b border-white/5 relative">
-        <div className="absolute top-8 right-8">
+    <div className="app-canvas min-h-screen" style={{ background: '#000' }}>
+      <div className="mx-auto px-7 lg:px-10" style={{ maxWidth: '1200px' }}>
+        {/* Hero */}
+        <header className="relative" style={{ paddingTop: '80px', paddingBottom: '40px', borderBottom: '1px solid var(--hair)' }}>
           <a
             href="/api/export"
             download="neurowiki-export.zip"
-            className="flex items-center gap-2 text-[10px] tracking-wider uppercase px-3 py-1.5 rounded-full border border-white/10 hover:border-white/25 transition"
-            style={{ color: 'rgba(222,219,200,0.4)' }}
+            className="absolute right-0 flex items-center gap-2 rounded-full transition-all duration-200 hover:bg-white/[0.04]"
+            style={{
+              top: '80px',
+              padding: '7px 14px',
+              fontSize: 'var(--fs-kicker)',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-mute)',
+              border: '1px solid var(--hair)',
+            }}
           >
-            <Download size={11} />
+            <Download size={12} />
             Export
           </a>
-        </div>
-        <h1 className="font-medium leading-[0.9]" style={{ fontSize: 'clamp(2.5rem, 6vw, 5rem)', color: '#E1E0CC' }}>
-          <WordsPullUp text="Everything you know." />
-        </h1>
-        <FadeUp delay={0.3}>
-          <p className="font-serif-italic text-xl mt-3" style={{ color: 'rgba(222,219,200,0.5)' }}>
+
+          <h1
+            style={{
+              fontSize: 'var(--fs-h1)',
+              fontWeight: 400,
+              lineHeight: 1,
+              letterSpacing: '-0.03em',
+              color: 'var(--ink-strong)',
+            }}
+          >
+            Everything you know.
+          </h1>
+          <p className="serif mt-3" style={{ fontSize: 'var(--fs-quote)', color: 'var(--ink-soft)', letterSpacing: '-0.005em' }}>
             Compiled. Connected. Yours.
           </p>
-        </FadeUp>
-      </div>
 
-      <div className="sticky top-[49px] z-20 bg-black/90 backdrop-blur-sm border-b border-white/5 px-8 py-3 flex items-center gap-3 flex-wrap">
-        {TYPES.map(type => (
-          <button
-            key={type}
-            onClick={() => setFilter(type)}
-            className={`text-[10px] tracking-wider uppercase px-3 py-1 rounded-full border transition-all duration-200 ${
-              filter === type
-                ? 'bg-[#DEDBC8] border-[#DEDBC8] text-black'
-                : 'border-white/10 hover:border-white/30'
-            }`}
-            style={{ color: filter === type ? '#000' : 'rgba(222,219,200,0.5)' }}
-          >
-            {type}
-          </button>
-        ))}
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Filter pages..."
-          className="ml-auto bg-transparent border-b border-white/10 text-[11px] px-2 py-1 outline-none w-40"
-          style={{ color: '#DEDBC8' }}
-        />
-      </div>
+          <div className="flex flex-wrap items-center gap-4 mt-6" style={{ fontSize: 'var(--fs-kicker)', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
+            <span><span style={{ color: 'var(--ink-strong)' }}>{pages.length}</span> pages</span>
+            <span style={{ color: 'var(--ink-faint)' }}>·</span>
+            <span><span style={{ color: 'var(--ink-strong)' }}>{captures.length}</span> captures</span>
+            {TYPE_ORDER.filter((t) => counts[t] && tab === 'pages').slice(0, 3).map((t) => (
+              <span key={t} style={{ color: 'var(--ink-faint)' }}>
+                · <span style={{ color: 'var(--ink-soft)' }}>{counts[t]}</span> {t}{counts[t] > 1 ? 's' : ''}
+              </span>
+            ))}
+          </div>
+        </header>
 
-      <div className="p-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 flex-1 items-start">
-        {loading
-          ? Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="bg-[#212121] rounded-2xl p-5 animate-pulse h-48" />
-            ))
-          : filtered.length === 0
-          ? <div className="col-span-full text-center py-20 flex flex-col items-center justify-center h-64">
-              {pages.length === 0 ? (
-                <>
-                  <p className="text-sm mb-1" style={{ color: 'rgba(222,219,200,0.35)' }}>
-                    Wiki is empty.
-                  </p>
-                  <p className="text-xs mb-6" style={{ color: 'rgba(222,219,200,0.2)' }}>
-                    Feed it a source to get started.
-                  </p>
+        {/* Tabs */}
+        <div className="flex items-center gap-6 pt-7" style={{ borderBottom: '1px solid var(--hair)' }}>
+          {[
+            { id: 'pages', label: 'Pages', count: pages.length },
+            { id: 'captures', label: 'Captures', count: captures.length },
+          ].map((t) => {
+            const active = tab === t.id
+            return (
+              <button
+                key={t.id}
+                onClick={() => { setTab(t.id as 'pages' | 'captures'); setFilter(null); setSearch('') }}
+                className="relative"
+                style={{
+                  fontSize: 'var(--fs-nav)',
+                  letterSpacing: '0.16em',
+                  textTransform: 'uppercase',
+                  color: active ? 'var(--ink-strong)' : 'var(--ink-mute)',
+                  paddingBottom: '12px',
+                }}
+              >
+                {t.label}
+                <span className="font-mono ml-2" style={{ fontSize: 'var(--fs-micro)', color: 'var(--ink-soft)' }}>{t.count}</span>
+                {active && (
+                  <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '1px', background: 'var(--ink-strong)' }} />
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Filter row */}
+        <div className="flex items-center justify-between gap-3 flex-wrap mt-5 mb-7">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              onClick={() => setFilter(null)}
+              className="rounded-full transition-all duration-150"
+              style={{
+                padding: '4px 11px',
+                fontSize: 'var(--fs-kicker)',
+                letterSpacing: '0.04em',
+                color: !filter ? 'var(--ink-strong)' : 'var(--ink-mute)',
+                background: !filter ? 'rgba(222,219,200,0.06)' : 'transparent',
+                border: `1px solid ${!filter ? 'var(--hair-strong)' : 'var(--hair)'}`,
+              }}
+            >
+              All <span className="font-mono ml-1" style={{ fontSize: 'var(--fs-micro)', opacity: 0.6 }}>{source.length}</span>
+            </button>
+            {TYPE_ORDER.filter((t) => counts[t]).map((t) => {
+              const tc = TYPE_COLORS[t] ?? TYPE_COLORS.concept
+              const active = filter === t
+              return (
+                <button
+                  key={t}
+                  onClick={() => setFilter(active ? null : t)}
+                  className="rounded-full transition-all duration-150 capitalize"
+                  style={{
+                    padding: '4px 11px',
+                    fontSize: 'var(--fs-kicker)',
+                    letterSpacing: '0.03em',
+                    color: active ? tc.color : 'var(--ink-mute)',
+                    background: active ? tc.bg : 'transparent',
+                    border: `1px solid ${active ? tc.border : 'var(--hair)'}`,
+                  }}
+                >
+                  {t} <span className="font-mono ml-1" style={{ fontSize: 'var(--fs-micro)', opacity: 0.7 }}>{counts[t]}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center gap-2 rounded-full" style={{ padding: '5px 14px', border: '1px solid var(--hair)', minWidth: '220px' }}>
+            <span style={{ fontSize: 'var(--fs-kicker)', color: 'var(--ink-faint)' }}>🔍</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter pages…"
+              className="bg-transparent outline-none flex-1"
+              style={{ fontSize: 'var(--fs-meta)', color: 'var(--ink)' }}
+            />
+          </div>
+        </div>
+
+        {/* Content */}
+        {loading ? (
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="app-card animate-pulse" style={{ minHeight: '160px' }} />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center py-20">
+            {source.length === 0 ? (
+              <>
+                <p className="serif" style={{ fontSize: 'var(--fs-quote)', color: 'var(--ink-soft)', marginBottom: '6px' }}>
+                  {tab === 'captures' ? 'No captures yet.' : 'Wiki is empty.'}
+                </p>
+                <p className="kicker mb-6">
+                  {tab === 'captures' ? 'Visit /diary to start writing.' : 'Feed it a source to get started.'}
+                </p>
+                {tab === 'pages' && (
                   <Link
                     href="/ingest"
-                    className="group inline-flex items-center gap-2 bg-[#DEDBC8] rounded-full pl-4 pr-1 py-1 hover:opacity-90 transition-opacity"
+                    className="group inline-flex items-center gap-2 rounded-full pl-5 pr-1.5 py-1.5 transition-opacity hover:opacity-90"
+                    style={{ background: 'var(--ink)' }}
                   >
-                    <span className="text-black font-medium text-sm">Feed the wiki</span>
-                    <div className="bg-black rounded-full w-8 h-8 flex items-center justify-center transition-transform group-hover:scale-110">
-                      <ArrowRight size={13} color="#DEDBC8" />
+                    <span style={{ color: '#000', fontWeight: 500, fontSize: 'var(--fs-body-sm)' }}>Feed the wiki</span>
+                    <div className="rounded-full flex items-center justify-center transition-transform group-hover:scale-110" style={{ width: 30, height: 30, background: '#000' }}>
+                      <ArrowRight size={13} color="var(--ink)" />
                     </div>
                   </Link>
-                </>
-              ) : (
-                <p className="text-sm" style={{ color: 'rgba(222,219,200,0.3)' }}>No pages match.</p>
-              )}
-            </div>
-          : filtered.map((page, i) => <PageCard key={page.slug} page={page} index={i} />)
-        }
+                )}
+              </>
+            ) : (
+              <p className="serif" style={{ fontSize: 'var(--fs-body-lg)', color: 'var(--ink-mute)' }}>No pages match.</p>
+            )}
+          </div>
+        ) : grouped ? (
+          <div className="flex flex-col gap-10 pb-20">
+            {grouped.map(({ type, items }) => (
+              <section key={type}>
+                <div className="flex items-baseline gap-3 mb-4">
+                  <span className="kicker kicker-rule capitalize">{type}</span>
+                  <span className="kicker" style={{ color: 'var(--ink-faint)' }}>{items.length}</span>
+                </div>
+                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+                  {items.map((p, i) => (
+                    <PageCard key={p.slug} page={p} index={i} />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+            {filtered.map((p, i) => (
+              <PageCard key={p.slug} page={p} index={i} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
