@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CopyLink } from '@/components/CopyLink'
 import { StickyTitle } from '@/components/StickyTitle'
+import { WikiEditAgent } from '@/components/WikiEditAgent'
 
 function readingTime(content: string): string {
   const words = content.split(/\s+/).length
@@ -34,9 +35,22 @@ async function getPage(slug: string) {
   }
 }
 
+async function getChildren(slug: string) {
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/wiki/${slug}/children`, {
+      cache: 'no-store'
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.children ?? []
+  } catch {
+    return []
+  }
+}
+
 export default async function WikiPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const data = await getPage(slug)
+  const [data, children] = await Promise.all([getPage(slug), getChildren(slug)])
   if (!data) notFound()
 
   const { page, relatedPages = [], backlinks = [] } = data
@@ -56,6 +70,12 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
               style={{ color: 'rgba(222,219,200,0.4)' }}>
               Edit page
             </Link>
+            <WikiEditAgent
+              slug={page.slug}
+              title={page.title}
+              type={page.type}
+              currentContent={page.content}
+            />
             <CopyLink slug={slug} />
           </div>
         </div>
@@ -119,6 +139,26 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
                     }}>
                     {h.text}
                   </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {children?.length > 0 && (
+            <div>
+              <p className="text-[9px] tracking-[0.3em] uppercase mb-3" style={{ color: 'rgba(222,219,200,0.3)' }}>
+                Pages in this topic
+              </p>
+              <div className="space-y-2">
+                {children.map((c: { slug: string; title: string; type: string }) => (
+                  <Link key={c.slug} href={`/wiki/${c.slug}`}
+                    className="flex items-center gap-2 py-1.5 group">
+                    <TypeBadge type={c.type} />
+                    <span className="text-[11px] transition-opacity group-hover:opacity-100"
+                      style={{ color: 'rgba(222,219,200,0.5)' }}>
+                      {c.title}
+                    </span>
+                  </Link>
                 ))}
               </div>
             </div>
