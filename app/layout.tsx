@@ -4,7 +4,6 @@ import { Toaster } from 'sonner'
 import { HoverSidebar } from '@/components/layout/HoverSidebar'
 import { BackButton } from '@/components/layout/BackButton'
 import { Topbar } from '@/components/layout/Topbar'
-import { PageNav } from '@/components/layout/PageNav'
 import { PageTransition } from '@/components/PageTransition'
 import { Footer } from '@/components/Footer'
 
@@ -20,7 +19,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <HoverSidebar />
         <Topbar />
         <BackButton />
-        <PageNav />
         <main className="min-h-screen flex flex-col">
           <PageTransition>
             <div className="flex-1">

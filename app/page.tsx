@@ -50,34 +50,6 @@ export default function Home() {
           {/* Gradient — ABOVE noise */}
           <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/30 via-transparent to-black/70" />
 
-          {/* FIX 3 — NAVBAR PILL */}
-          <nav className="absolute top-0 left-1/2 -translate-x-1/2 z-20">
-            <div className="bg-black rounded-b-2xl md:rounded-b-3xl px-4 py-2 md:px-7 md:py-2.5 flex items-center gap-4 sm:gap-6 md:gap-10">
-              {[
-                { label: 'Browse', href: '/wiki' },
-                { label: 'Add Source', href: '/ingest' },
-                { label: 'Search', href: '/search' },
-                { label: 'Graph', href: '/graph' },
-                { label: 'About', href: '/about' },
-              ].map(({ label, href }) => (
-                <Link
-                  key={label}
-                  href={href}
-                  className="text-[10px] sm:text-xs tracking-wider whitespace-nowrap transition-colors duration-200"
-                  style={{ color: 'rgba(225, 224, 204, 0.75)' }}
-                  onMouseEnter={e => {
-                    (e.currentTarget as HTMLElement).style.color = '#E1E0CC'
-                  }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLElement).style.color = 'rgba(225, 224, 204, 0.75)'
-                  }}
-                >
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </nav>
-
           {/* Hero content — bottom aligned */}
           <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6 md:p-8 lg:p-10">
             
