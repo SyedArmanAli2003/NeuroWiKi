@@ -12,9 +12,11 @@ export async function GET(req: Request) {
   return Response.json({ entries, meta, streak })
 }
 
-async function syncToHydra(entry: { id: number; date: string; time: string; kind: string; text: string }): Promise<boolean> {
+async function syncToHydra(entry: { id: number; date: string; time: string; kind: string; title: string | null; text: string }): Promise<boolean> {
   try {
     await ensureTenant('default')
+    const displayTitle = entry.title?.trim() || `Diary ${entry.date} – ${entry.kind}`
+    const heading = entry.title?.trim() || `Diary Entry — ${entry.date} ${entry.time}`
     await hydra.upload.knowledge({
       tenant_id: 'default',
       upsert: true,
@@ -22,15 +24,16 @@ async function syncToHydra(entry: { id: number; date: string; time: string; kind
         tenant_id: 'default',
         sub_tenant_id: 'default',
         id: `diary-${entry.id}`,
-        title: `Diary ${entry.date} – ${entry.kind}`,
+        title: displayTitle,
         type: 'document',
         content: {
-          markdown: `# Diary Entry — ${entry.date} ${entry.time}\n\n**Kind:** ${entry.kind}\n\n${entry.text}`,
+          markdown: `# ${heading}\n\n**Kind:** ${entry.kind}\n\n${entry.text}`,
         },
         document_metadata: {
           category: 'diary',
           date: entry.date,
           kind: entry.kind,
+          title: entry.title ?? null,
           slug: `diary-${entry.id}`,
         },
       }]),
@@ -51,6 +54,7 @@ export async function POST(req: Request) {
       date,
       time: fields.time,
       kind: fields.kind ?? 'thought',
+      title: fields.title?.trim() || null,
       text: fields.text,
       filed_under: fields.filed_under ?? null,
     })
@@ -75,8 +79,14 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const { id, text } = await req.json()
-  if (!id || !text?.trim()) return Response.json({ error: 'Missing id or text' }, { status: 400 })
-  const entry = updateEntry(id, text.trim())
+  const { id, text, title } = await req.json()
+  if (!id) return Response.json({ error: 'Missing id' }, { status: 400 })
+  if (text === undefined && title === undefined) {
+    return Response.json({ error: 'Nothing to update' }, { status: 400 })
+  }
+  const entry = updateEntry(id, {
+    ...(text !== undefined ? { text: text.trim() } : {}),
+    ...(title !== undefined ? { title: title?.trim() || null } : {}),
+  })
   return Response.json({ entry })
 }

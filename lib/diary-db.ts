@@ -10,6 +10,7 @@ db.exec(`
     date       TEXT NOT NULL,        -- YYYY-MM-DD
     time       TEXT NOT NULL,        -- HH:MM format
     kind       TEXT NOT NULL DEFAULT 'thought',
+    title      TEXT,
     text       TEXT NOT NULL,
     filed_under TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -25,6 +26,13 @@ db.exec(`
   );
 `)
 
+try {
+  const cols = db.prepare(`PRAGMA table_info(diary_entries)`).all() as { name: string }[]
+  if (!cols.find(c => c.name === 'title')) {
+    db.exec(`ALTER TABLE diary_entries ADD COLUMN title TEXT`)
+  }
+} catch {}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -36,6 +44,7 @@ export interface DiaryEntry {
   date: string
   time: string
   kind: EntryKind
+  title: string | null
   text: string
   filed_under: string | null
   created_at: string
@@ -60,9 +69,9 @@ export function getTodayEntries(date: string): DiaryEntry[] {
 
 export function insertEntry(entry: Omit<DiaryEntry, 'id' | 'created_at'>): DiaryEntry {
   const info = db.prepare(`
-    INSERT INTO diary_entries (date, time, kind, text, filed_under)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(entry.date, entry.time, entry.kind, entry.text, entry.filed_under ?? null)
+    INSERT INTO diary_entries (date, time, kind, title, text, filed_under)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(entry.date, entry.time, entry.kind, entry.title ?? null, entry.text, entry.filed_under ?? null)
   return db.prepare(`SELECT * FROM diary_entries WHERE id = ?`).get(info.lastInsertRowid) as DiaryEntry
 }
 
@@ -110,8 +119,12 @@ export function computeStreak(today: string): number {
   return streak
 }
 
-export function updateEntry(id: number, text: string): DiaryEntry | null {
-  db.prepare(`UPDATE diary_entries SET text = ? WHERE id = ?`).run(text, id)
+export function updateEntry(id: number, fields: { text?: string; title?: string | null }): DiaryEntry | null {
+  const sets: string[] = []
+  const vals: any[] = []
+  if (fields.text !== undefined)  { sets.push('text = ?');  vals.push(fields.text) }
+  if (fields.title !== undefined) { sets.push('title = ?'); vals.push(fields.title) }
+  if (sets.length) db.prepare(`UPDATE diary_entries SET ${sets.join(', ')} WHERE id = ?`).run(...vals, id)
   return db.prepare(`SELECT * FROM diary_entries WHERE id = ?`).get(id) as DiaryEntry | null
 }
 
