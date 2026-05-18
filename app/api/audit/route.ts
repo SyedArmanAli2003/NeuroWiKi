@@ -42,11 +42,14 @@ export async function GET(req: NextRequest) {
       .filter(slug => !pageSlugSet.has(slug))
   )]
 
+  // When HydraDB has more pages than SQLite, use hydraCount as the display total
+  const displayTotal = hydraCount > all.length ? hydraCount : all.length
+
   return Response.json({
-    totalPages: all.length,
+    totalPages: displayTotal,
     stalePages: stale.length,
     flaggedPages: flagged.length,
-    healthScore: Math.round(((all.length - stale.length - flagged.length) / Math.max(all.length, 1)) * 100),
+    healthScore: Math.round(((displayTotal - stale.length - flagged.length) / Math.max(displayTotal, 1)) * 100),
     syncWarning,
     stale: stale.map(p => ({ slug: p.slug, title: p.title, last_validated: p.last_validated })),
     flagged: flagged.map(p => ({ slug: p.slug, title: p.title, stale_reason: p.stale_reason, confidence: p.confidence })),

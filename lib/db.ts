@@ -110,6 +110,14 @@ function createTables(db: Database.Database): void {
       pages_analyzed  INTEGER NOT NULL DEFAULT 0,
       issues_found    INTEGER NOT NULL DEFAULT 0
     );
+
+    -- Pages that failed SQLite indexing after HydraDB write; backfilled by processReindexQueue
+    CREATE TABLE IF NOT EXISTS reindex_queue (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      hydra_id   TEXT NOT NULL UNIQUE,
+      attempts   INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
   `)
 }
 

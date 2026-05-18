@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { extract } from '@extractus/article-extractor'
 import pdfParse from 'pdf-parse'
 import mammoth from 'mammoth'
-import { createSource, createLog } from '@/lib/db-helpers'
+import { createSource, createLog, processReindexQueue } from '@/lib/db-helpers'
 import { runIngestAgent } from '@/lib/agents/ingest-agent'
 import { runConsistencyCheck } from '@/lib/agents/consistency-agent'
 import { hydra } from '@/lib/hydra'
@@ -88,6 +88,9 @@ async function scrapeUrl(url: string): Promise<{ title: string; text: string }> 
 // POST /api/ingest — supports text, url/urls (array), and file uploads
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
+  if (!process.env.GEMINI_API_KEY) {
+    return Response.json({ error: 'API key not configured' }, { status: 500 })
+  }
   const encoder = new TextEncoder()
   const contentType = req.headers.get('content-type') ?? ''
   let body: any = {}
@@ -103,6 +106,9 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (msg: string) => controller.enqueue(encoder.encode(msg + '\n'))
+
+      // Best-effort: drain reindex queue from previous failed ingest runs
+      processReindexQueue(async () => null)
 
       try {
         const { text, url } = body
@@ -223,7 +229,10 @@ export async function POST(req: NextRequest) {
         controller.close()
       } catch (error: any) {
         console.error('[ingest] Error:', error?.stack ?? error)
-        send(JSON.stringify({ error: error.message || 'Unknown error occurred' }))
+        const msg: string = error.message || 'Unknown error occurred'
+        const retryMatch = msg.match(/retry(?:\s+after|:?)\s*(\d+)\s*second/i)
+        const retryAfter = retryMatch ? parseInt(retryMatch[1], 10) : undefined
+        send(JSON.stringify({ error: msg, ...(retryAfter !== undefined && { retryAfter }) }))
         controller.close()
       }
     },

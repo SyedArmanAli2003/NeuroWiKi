@@ -261,4 +261,36 @@ export function getPagesUpdatedSince(since: string): PageHealth[] {
   ).all(since)
 }
 
+// ---------------------------------------------------------------------------
+// Reindex Queue
+// ---------------------------------------------------------------------------
+
+export function enqueueReindex(hydraId: string): void {
+  db.prepare(`INSERT OR IGNORE INTO reindex_queue (hydra_id) VALUES (?)`).run(hydraId)
+}
+
+export function processReindexQueue(
+  fetchPageMeta: (hydraId: string) => Promise<Parameters<typeof upsertPageHealth>[0] | null>
+): void {
+  const rows = db.prepare<[], { id: number; hydra_id: string; attempts: number }>(
+    `SELECT id, hydra_id, attempts FROM reindex_queue ORDER BY created_at ASC LIMIT 20`
+  ).all()
+
+  for (const row of rows) {
+    ;(async () => {
+      try {
+        const meta = await fetchPageMeta(row.hydra_id)
+        if (meta) {
+          upsertPageHealth(meta)
+          db.prepare(`DELETE FROM reindex_queue WHERE id = ?`).run(row.id)
+        } else {
+          db.prepare(`UPDATE reindex_queue SET attempts = attempts + 1 WHERE id = ?`).run(row.id)
+        }
+      } catch {
+        db.prepare(`UPDATE reindex_queue SET attempts = attempts + 1 WHERE id = ?`).run(row.id)
+      }
+    })()
+  }
+}
+
 //archivePage and restorePage functions removed since they're not currently used, but can be re-added if needed in the future.

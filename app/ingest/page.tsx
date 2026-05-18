@@ -32,6 +32,7 @@ export default function IngestPage() {
   const [done, setDone] = useState(false)
   const [warning, setWarning] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [retryAfter, setRetryAfter] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const advanceStep = (index: number) => {
@@ -67,6 +68,7 @@ export default function IngestPage() {
     setWarning(null)
     setResults([])
     setError(null)
+    setRetryAfter(null)
     setSteps(INITIAL_STEPS.map((s, i) => ({ ...s, status: i === 0 ? 'active' : 'pending' })))
     toast.loading('Processing source...', { id: 'ingest' })
 
@@ -117,8 +119,13 @@ export default function IngestPage() {
         return
       }
       if (data.error) {
-        toast.error(`Ingest failed: ${data.error}`, { id: 'ingest' })
-        setError(`Ingest failed: ${data.error}`)
+        const isQuota = data.error.includes('quota') || data.error.includes('429') || data.error.includes('busy')
+        const displayError = isQuota
+          ? 'AI is a little busy right now. Please wait ~30 seconds and try again.'
+          : `Ingest failed: ${data.error}`
+        toast.error(displayError, { id: 'ingest' })
+        setError(displayError)
+        if (data.retryAfter) setRetryAfter(data.retryAfter)
         setLoading(false)
         return
       }
@@ -351,7 +358,20 @@ export default function IngestPage() {
         {error && (
           <div className="mt-6 bg-red-950/30 border border-red-900/50 rounded-xl p-3 flex items-start gap-3">
             <span className="text-red-500 text-xs mt-0.5">✗</span>
-            <p className="text-[11px] text-red-200/80 leading-relaxed font-mono">{error}</p>
+            <div className="flex-1">
+              <p className="text-[11px] text-red-200/80 leading-relaxed font-mono">{error}</p>
+              {retryAfter && (
+                <p className="text-[10px] text-amber-400/70 mt-1">Retry in {retryAfter}s...</p>
+              )}
+            </div>
+            {(error.includes('busy') || error.includes('quota')) && (
+              <button
+                onClick={tab === 'bulk' ? handleBulkSubmit : handleSubmit}
+                className="text-[10px] px-3 py-1 rounded-full border border-red-500/40 text-red-400 hover:bg-red-500/10 transition shrink-0"
+              >
+                Retry
+              </button>
+            )}
           </div>
         )}
 

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { Loader2, Zap } from 'lucide-react'
+import { Loader2, Wrench, Zap } from 'lucide-react'
 import { WordsPullUp } from '@/components/animations/WordsPullUp'
 import { FadeUp } from '@/components/animations/FadeUp'
 
@@ -35,6 +35,26 @@ export default function AuditPage() {
   const [lintError, setLintError] = useState<string | null>(null)
   const [fixingIsland, setFixingIsland] = useState<number | null>(null)
   const [fixResults, setFixResults] = useState<Record<number, { connected: number; total: number }>>({})
+  const [repairing, setRepairing] = useState(false)
+  const [repairResult, setRepairResult] = useState<{ repaired: number; total: number } | null>(null)
+  const [repairError, setRepairError] = useState<string | null>(null)
+
+  const runRepair = async () => {
+    setRepairing(true)
+    setRepairResult(null)
+    setRepairError(null)
+    try {
+      const res = await fetch('/api/repair', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setRepairResult({ repaired: data.repaired, total: data.total })
+      fetch('/api/audit').then(r => r.json()).then(setAudit)
+    } catch (e: any) {
+      setRepairError(e.message)
+    } finally {
+      setRepairing(false)
+    }
+  }
 
   const fixIsland = async (index: number, slugs: string[]) => {
     setFixingIsland(index)
@@ -97,7 +117,25 @@ export default function AuditPage() {
             <FadeUp delay={0.35}>
               <div className="mb-8 bg-amber-950/30 border border-amber-900/50 rounded-xl p-4 flex items-start gap-3">
                 <span className="text-amber-500 text-sm mt-0.5">⚠️</span>
-                <p className="text-xs text-amber-200/80 leading-relaxed">{audit.syncWarning}</p>
+                <div className="flex-1">
+                  <p className="text-xs text-amber-200/80 leading-relaxed">{audit.syncWarning}</p>
+                  {repairResult && (
+                    <p className="text-xs text-emerald-400 mt-1">Repaired {repairResult.repaired} of {repairResult.total} pages.</p>
+                  )}
+                  {repairError && (
+                    <p className="text-xs text-red-400 mt-1">{repairError}</p>
+                  )}
+                </div>
+                <button
+                  onClick={runRepair}
+                  disabled={repairing}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-amber-500/40 text-amber-400 text-xs hover:bg-amber-500/10 transition disabled:opacity-50 shrink-0"
+                >
+                  {repairing
+                    ? <><Loader2 size={10} className="animate-spin" /> Repairing...</>
+                    : <><Wrench size={10} /> Repair now</>
+                  }
+                </button>
               </div>
             </FadeUp>
           )}

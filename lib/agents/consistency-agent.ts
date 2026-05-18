@@ -2,6 +2,7 @@ import { google } from '@ai-sdk/google'
 import { generateObject } from 'ai'
 import { z } from 'zod'
 import { hydra } from '@/lib/hydra'
+import { withGeminiRetry } from '@/lib/gemini-retry'
 
 const ContradictionSchema = z.object({
   contradictions: z.array(z.object({
@@ -97,12 +98,12 @@ Be conservative — only flag genuine contradictions, not just different phrasin
 Return JSON only.
 `
 
-  const { object } = await generateObject({
-    model: google('gemini-2.5-flash'),
+  const { object } = await withGeminiRetry(() => generateObject({
+    model: google('gemini-2.0-flash-exp'),
     providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
     schema: ContradictionSchema,
     prompt,
-  })
+  }))
 
   const flagged: string[] = []
   let updated = 0
@@ -119,8 +120,8 @@ Return JSON only.
     ) {
       const existing = await getPageBySlug(contradiction.existingPageSlug)
       if (existing) {
-        const { object: rewritten } = await generateObject({
-          model: google('gemini-2.5-flash'),
+        const { object: rewritten } = await withGeminiRetry(() => generateObject({
+          model: google('gemini-2.0-flash-exp'),
           providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
           schema: z.object({ content: z.string() }),
           prompt: `You are a wiki editor. Update this page to incorporate a correction.
@@ -138,7 +139,7 @@ Rules:
 - Keep all other content intact
 - Do not add headers or notes about the update
 - Return only the updated content`,
-        })
+        }))
         await upsertPage({
           ...existing,
           content: rewritten.content,
