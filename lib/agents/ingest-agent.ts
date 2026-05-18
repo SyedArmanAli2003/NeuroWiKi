@@ -1,25 +1,19 @@
-import { generateObject } from 'ai'
+import { generateObject, NoObjectGeneratedError } from 'ai'
 import { google } from '@ai-sdk/google'
 import { z } from 'zod'
-import { hydra, waitForIngestion } from '../hydra'
-import { upsertPageHealth } from '../db-helpers'
+import { hydra, ensureTenant, waitForIngestion } from '../hydra'
+import { upsertPageHealth, upsertPageLinks, getAllPages } from '../db-helpers'
+import { findExistingPage, absorbIntoExisting, enrichRelatedPage } from './absorb-agent'
 
 export interface IngestResult {
   pagesCreated: number
-  pages: Array<{ slug: string; title: string; content: string; isNew: boolean; indexed: boolean }>
+  pages: Array<{ slug: string; title: string; type: string; content: string; isNew: boolean; indexed: boolean }>
 }
 
-/**
- * Takes raw source text and:
- * 1. Uses Gemini to generate wiki pages (structured JSON)
- * 2. Stores each page in HydraDB as a Knowledge document
- * 3. HydraDB automatically builds the context graph
- */
 async function verifyClaims(
   page: { content: string; sourceSentences: string[] },
   sourceText: string
 ): Promise<boolean> {
-  // Check each source sentence actually exists in the source
   for (const sentence of page.sourceSentences) {
     const words = sentence.toLowerCase().split(' ').filter(w => w.length > 4)
     if (words.length === 0) continue
@@ -36,8 +30,11 @@ async function verifyClaims(
 export async function runIngestAgent(
   sourceText: string,
   sourceId: number,
-  tenantId: string = 'default_tenant'
+  tenantId: string = 'default'
 ): Promise<IngestResult> {
+  // Ensure tenant exists before any operations
+  await ensureTenant(tenantId)
+
   // Step 1: Fetch existing pages for the prompt
   let existingPages: any[] = []
   try {
@@ -47,19 +44,21 @@ export async function runIngestAgent(
       page: 1,
       page_size: 100,
     })) as any
-    const items: any[] = res?.results ?? res?.data ?? res?.items ?? []
+    const items: any[] = res?.sources ?? []
     existingPages = items.map((item: any) => ({
-      slug: (item.additional_metadata?.slug as string) || item.id,
+      slug: (item.document_metadata?.slug as string) || item.id,
       title: item.title || '',
-      summary: (item.metadata?.summary as string) || '',
+      summary: (item.document_metadata?.summary as string) || '',
     }))
-  } catch (e) {
-    console.warn("Failed to fetch existing pages for prompt index", e)
+  } catch (e: any) {
+    const is404 = e?.statusCode === 404 || e?.body?.detail?.error_code === 'NOT_FOUND'
+    if (!is404) console.warn("Failed to fetch existing pages for prompt index", e)
   }
 
   // Step 2 — Generate pages with Gemini
   const result = await generateObject({
-    model: google('gemini-1.5-pro'),
+    model: google('gemini-2.5-flash'),
+    providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
     schema: z.object({
       pages: z.array(
         z.object({
@@ -68,7 +67,7 @@ export async function runIngestAgent(
           type: z.enum(['concept', 'person', 'place', 'event', 'tool', 'organization']),
           summary: z.string(),
           content: z.string().describe('150-300 word markdown, encyclopedic style'),
-          sourceSentences: z.array(z.string()).min(1).max(5),
+          sourceSentences: z.array(z.string()).min(1).max(10),
         })
       ),
     }),
@@ -91,19 +90,33 @@ Rules you MUST follow:
 6. Create 2-5 wiki pages about key concepts from this specific source
 7. Use [[wikilinks]] to link to related pages by their slug
 
-Return a JSON array of pages. Each page must include:
+Return JSON with a "pages" key containing an array. Each page must include:
 - slug: lowercase-hyphenated
 - title: human readable
 - type: concept | person | place | event | tool | organization
 - summary: one sentence from the source
 - content: 150-300 word markdown — only facts from the source
-- sourceSentences: array of 2-5 exact quotes (under 20 words each) 
+- sourceSentences: array of 2-10 exact quotes (under 20 words each)
   from the source text that back up the main claims in this page
 `,
+  }).catch((err: unknown) => {
+    if (NoObjectGeneratedError.isInstance(err)) {
+      console.error('[ingest] Raw Gemini response:', (err as any).text)
+      console.error('[ingest] Cause:', (err as any).cause?.message)
+    }
+    throw err
   })
 
-  const pages: Array<{ slug: string; title: string; content: string; isNew: boolean; indexed: boolean }> = []
+  const pages: Array<{ slug: string; title: string; type: string; content: string; isNew: boolean; indexed: boolean }> = []
   let pagesCreated = 0
+
+  // Collect existing hydra_doc_ids to forcefully relate new pages to them
+  const existingHydraIds = getAllPages()
+    .map((p) => p.hydra_doc_id)
+    .filter((id): id is string => !!id)
+
+  // Track real source IDs of pages uploaded in this batch for sibling cross-linking
+  const batchHydraIds: string[] = []
 
   // Step 3 — Verify and Store each page in HydraDB as Knowledge
   for (const page of result.object.pages) {
@@ -113,72 +126,120 @@ Return a JSON array of pages. Each page must include:
         console.warn(`Skipping page ${page.slug} — claims could not be verified against source`)
         continue
       }
-      // NOTE: Using the official @hydradb/sdk signature 'upload.knowledge()' and mapping your
-      // 'hydra.knowledge.add()' metadata intention into the correct 'app_knowledge' payload structure.
-      await hydra.upload.knowledge({
+
+      // Absorb: check if page already exists — if so, enrich rather than overwrite
+      let finalContent = page.content
+      let finalSummary = page.summary
+      let finalSourceSentences = page.sourceSentences
+      let isNew = true
+
+      const existingPage = await findExistingPage(page.slug, tenantId)
+      if (existingPage) {
+        console.log(`[ingest] Absorbing into existing page: ${page.slug}`)
+        // Pass all known slugs so AI only creates links to real graph nodes (Fix 3)
+        const allKnownSlugs = existingPages.map(p => p.slug)
+        const merged = await absorbIntoExisting(existingPage, page, sourceText, allKnownSlugs)
+        finalContent = merged.content
+        finalSummary = merged.summary
+        finalSourceSentences = merged.sourceSentences
+        isNew = false
+      }
+
+      // All existing pages + siblings already uploaded this batch
+      const cortexSourceIds = [...existingHydraIds, ...batchHydraIds].filter(Boolean)
+
+      const uploadResponse = await hydra.upload.knowledge({
         tenant_id: tenantId,
+        upsert: true,
         app_knowledge: JSON.stringify([
           {
             tenant_id: tenantId,
             sub_tenant_id: 'default',
             id: page.slug,
             title: page.title,
-            type: 'webpage', // Maps to valid HydraDB ingestion type
+            type: 'document',
             content: {
-              text: `# ${page.title}\n\n${page.content}`,
+              markdown: `# ${page.title}\n\n${finalContent}`,
             },
-            metadata: {
-              category: page.type, // Map our wiki type to HydraDB metadata
-              summary: page.summary,
-              sourceSentences: page.sourceSentences,
+            document_metadata: {
+              category: page.type,
+              summary: finalSummary,
+              sourceSentences: finalSourceSentences,
               verified: true,
               verifiedAt: new Date().toISOString(),
-            },
-            additional_metadata: {
               sourceId: sourceId.toString(),
-              type: page.type,
               slug: page.slug,
             },
+            ...(cortexSourceIds.length > 0 && {
+              relations: { cortex_source_ids: cortexSourceIds },
+            }),
           },
         ]),
+      }) as any
+
+      // Use real source_id from upload response for status polling
+      const realSourceId = uploadResponse?.results?.[0]?.source_id ?? page.slug
+      batchHydraIds.push(realSourceId)
+      const ready = await waitForIngestion(realSourceId, tenantId)
+
+      upsertPageHealth({
+        slug: page.slug,
+        title: page.title,
+        type: page.type,
+        summary: finalSummary,
+        source_id: sourceId,
+        confidence: ready ? 100 : 60,
+        stale_reason: ready ? undefined : 'Indexing may be incomplete',
+        hydra_doc_id: realSourceId,
       })
 
-      const ready = await waitForIngestion(page.slug, tenantId)
-      if (!ready) {
-        console.warn(`Page ${page.slug} may have incomplete graph links — ingested but not fully indexed`)
-        upsertPageHealth({
-          slug: page.slug,
-          title: page.title,
-          type: page.type,
-          confidence: 60,
-          stale_reason: 'Indexing may be incomplete',
-          hydra_doc_id: page.slug
-        })
-      } else {
-        upsertPageHealth({
-          slug: page.slug,
-          title: page.title,
-          type: page.type,
-          hydra_doc_id: page.slug
-        })
-      }
+      // Parse [[wikilinks]] from content and store graph edges in SQLite
+      const linkedSlugs = [...finalContent.matchAll(/\[\[([^\]]+)\]\]/g)].map(m => m[1].trim())
+      if (linkedSlugs.length) upsertPageLinks(page.slug, linkedSlugs)
 
       pages.push({
         slug: page.slug,
         title: page.title,
-        content: page.content,
-        isNew: true, // Assuming creation succeeds if it doesn't throw
+        type: page.type,
+        content: finalContent,
+        isNew,
         indexed: ready,
       })
       pagesCreated++
-    } catch (error) {
-      console.error(`Failed to ingest generated page ${page.slug} to HydraDB:`, error)
+    } catch (error: any) {
+      console.error(`Failed to ingest page ${page.slug}:`, error?.body ?? error?.message)
     }
   }
 
-  // Step 3 — Return result
-  return {
-    pagesCreated,
-    pages,
+  // Step 4 — Enrich related existing pages with new source knowledge
+  // Limit to 2 related pages max to avoid rate limits
+  const newSlugs = new Set(pages.map(p => p.slug))
+  const enriched = new Set<string>()
+
+  try {
+    for (const newPage of pages.slice(0, 2)) {
+      const related = await hydra.recall.fullRecall({
+        tenant_id: tenantId,
+        query: newPage.title,
+        max_results: 4,
+      }) as any
+
+      const relatedSlugs: string[] = (related?.sources ?? [])
+        .map((s: any) => s.id)
+        .filter((id: string) => !newSlugs.has(id) && !enriched.has(id))
+        .slice(0, 2)
+
+      const newPagesSummary = pages.map(p => `${p.title}: ${p.content.slice(0, 200)}`).join('\n\n')
+      const allSlugs = existingPages.map(p => p.slug)
+
+      for (const relatedSlug of relatedSlugs) {
+        const ok = await enrichRelatedPage(relatedSlug, sourceText, newPagesSummary, allSlugs, tenantId)
+        if (ok) enriched.add(relatedSlug)
+      }
+    }
+  } catch (e) {
+    console.warn('[ingest] Related page enrichment pass failed:', e)
   }
+
+  return { pagesCreated, pages }
 }

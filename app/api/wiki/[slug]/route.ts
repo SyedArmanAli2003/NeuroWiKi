@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hydra } from '@/lib/hydra'
+import { db } from '@/lib/db'
 
 export async function GET(
   req: NextRequest,
@@ -26,10 +27,9 @@ export async function GET(
     // Fallback: also check chunks
     if (!pageSource) {
       const chunk = (searchResponse.chunks ?? []).find(
-        (c) => (c.additional_metadata?.slug as string) === slug || c.source_id === slug
+        (c) => c.source_id === slug
       )
       if (chunk) {
-        // Synthesise a minimal SourceInfo from the chunk
         pageSource = {
           id: chunk.source_id,
           title: chunk.source_title,
@@ -43,18 +43,34 @@ export async function GET(
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
 
-    const page = {
-      slug: (pageSource.additional_metadata?.slug as string) || pageSource.id,
-      title: pageSource.title ?? 'Unknown Title',
-      type:
-        (pageSource.additional_metadata?.type as string) ||
-        (pageSource.metadata?.category as string) ||
-        'concept',
-      summary: (pageSource.metadata?.summary as string) || '',
-      content: pageSource.description ?? '',
-      created_at: pageSource.timestamp ?? '',
+    // chunk_content is the full raw JSON document — extract markdown from it
+    const extractMarkdown = (chunkContent: string): string => {
+      try {
+        const doc = JSON.parse(chunkContent)
+        return doc?.content?.markdown ?? ''
+      } catch {
+        return chunkContent
+      }
     }
 
+    const chunks = (searchResponse.chunks ?? []).filter((c) => c.source_id === pageSource.id)
+    const firstChunk = chunks[0]
+    const parsedDoc = firstChunk ? (() => { try { return JSON.parse(firstChunk.chunk_content) } catch { return null } })() : null
+
+    const content = parsedDoc?.content?.markdown
+      || chunks.map((c) => extractMarkdown(c.chunk_content)).filter(Boolean).join('\n\n')
+      || ''
+
+    const meta = parsedDoc?.document_metadata ?? pageSource.additional_metadata ?? {}
+
+    const page = {
+      slug: (meta.slug as string) || pageSource.id,
+      title: parsedDoc?.title || pageSource.title || 'Unknown Title',
+      type: (meta.category as string) || 'concept',
+      summary: (meta.summary as string) || '',
+      content,
+      created_at: parsedDoc?.timestamp || pageSource.timestamp || '',
+    }
     // 2. Fetch related pages using fullRecall — also returns RetrievalResult
     const relatedResponse = await hydra.recall.fullRecall({
       tenant_id: 'default',
@@ -71,14 +87,24 @@ export async function GET(
       .map((s: any) => ({
         slug: (s.additional_metadata?.slug as string) || s.id,
         title: s.title ?? 'Unknown',
-        summary: (s.metadata?.summary as string) || '',
-        type:
-          (s.additional_metadata?.type as string) ||
-          (s.metadata?.category as string) ||
-          'concept',
+        summary: (s.additional_metadata?.summary as string) || '',
+        type: (s.additional_metadata?.category as string) || 'concept',
       }))
 
-    return NextResponse.json({ page, relatedPages })
+    // 3. Backlinks: pages that [[wikilink]] to this slug
+    const backlinkRows = db.prepare(`
+      SELECT pl.source_slug, p.title
+      FROM page_links pl
+      LEFT JOIN pages p ON p.slug = pl.source_slug
+      WHERE pl.target_slug = ?
+    `).all(slug) as Array<{ source_slug: string; title: string | null }>
+
+    const backlinks = backlinkRows.map(r => ({
+      slug: r.source_slug,
+      title: r.title ?? r.source_slug,
+    }))
+
+    return NextResponse.json({ page, relatedPages, backlinks })
   } catch (error: any) {
     console.error(`Error fetching page ${slug}:`, error)
     return NextResponse.json({ error: error.message }, { status: 500 })

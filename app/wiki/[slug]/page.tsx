@@ -2,7 +2,6 @@ import { WikiRenderer } from '@/components/WikiRenderer'
 import { TypeBadge } from '@/components/TypeBadge'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
 
 async function getPage(slug: string) {
   try {
@@ -21,16 +20,12 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
   const data = await getPage(slug)
   if (!data) notFound()
 
-  const { page, relatedPages = [] } = data
+  const { page, relatedPages = [], backlinks = [] } = data
 
   return (
     <div className="bg-black min-h-screen">
       {/* Hero bar */}
-      <div className="py-12 px-8 md:px-16 border-b border-white/5">
-        <Link href="/wiki" className="inline-flex items-center gap-2 text-[10px] tracking-wider uppercase mb-6 transition-opacity hover:opacity-100"
-          style={{ color: 'rgba(222,219,200,0.4)' }}>
-          <ArrowLeft size={12} /> All Pages
-        </Link>
+      <div className="pt-24 pb-12 px-8 md:px-16 border-b border-white/5">
         <div className="mb-3">
           <TypeBadge type={page.type} />
         </div>
@@ -92,12 +87,29 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
             </div>
           )}
 
+          {backlinks?.length > 0 && (
+            <div>
+              <p className="text-[9px] tracking-[0.3em] uppercase mb-3" style={{ color: 'rgba(222,219,200,0.3)' }}>
+                Referenced By
+              </p>
+              <div className="space-y-1.5">
+                {backlinks.map((b: { slug: string; title: string }) => (
+                  <Link key={b.slug} href={`/wiki/${b.slug}`}
+                    className="block text-[11px] transition-opacity hover:opacity-100"
+                    style={{ color: 'rgba(222,219,200,0.45)' }}>
+                    ← {b.title}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
             <p className="text-[9px] tracking-[0.3em] uppercase mb-3" style={{ color: 'rgba(222,219,200,0.3)' }}>
               Last Updated
             </p>
             <p className="text-[11px]" style={{ color: 'rgba(222,219,200,0.4)' }}>
-              {new Date(page.updated_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+              {(() => { const d = new Date(page.created_at); return page.created_at && !isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' })()}
             </p>
           </div>
         </div>
