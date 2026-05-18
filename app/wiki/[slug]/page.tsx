@@ -141,7 +141,7 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
                 ✎ Edit
               </Link>
               <WikiEditAgent slug={page.slug} title={page.title} type={page.type} currentContent={page.content} />
-              <RenameSlug slug={page.slug} />
+              <RenameSlug slug={page.slug} title={page.title} />
               <CopyLink slug={slug} />
             </div>
           </div>

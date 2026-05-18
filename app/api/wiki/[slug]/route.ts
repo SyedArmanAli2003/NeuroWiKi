@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hydra, ensureTenant, waitForIngestion } from '@/lib/hydra'
 import { db } from '@/lib/db'
-import { upsertPageHealth, upsertPageLinks, getSourceById } from '@/lib/db-helpers'
+import { upsertPageHealth, upsertPageLinks, getSourceById, getPageBySlug } from '@/lib/db-helpers'
 
 export async function GET(
   req: NextRequest,
@@ -11,31 +11,55 @@ export async function GET(
   const { slug } = await context.params
 
   try {
-    // 1. Find the page — booleanRecall returns RetrievalResult: { sources, chunks, ... }
-    const searchResponse = await hydra.recall.booleanRecall({
-      tenant_id: 'default',
-      query: slug,
-      operator: 'and',
-    })
+    // 1a. Try authoritative SQLite → HydraDB direct fetch by source_id first.
+    // This avoids fuzzy text-recall flakiness right after a rename/upload.
+    const localPage = getPageBySlug(slug)
+    let pageSource: any = null
+    let directChunkContent = ''
+    if (localPage?.hydra_doc_id) {
+      try {
+        const direct = await hydra.fetch.listData({
+          tenant_id: 'default',
+          kind: 'knowledge',
+          source_ids: [localPage.hydra_doc_id],
+        }) as any
+        const src = (direct?.sources ?? [])[0]
+        if (src) {
+          pageSource = src
+          directChunkContent = src.content?.markdown ?? src.description ?? ''
+        }
+      } catch (e) {
+        console.warn(`[wiki] Direct fetch by hydra_doc_id failed for ${slug}:`, e)
+      }
+    }
 
-    // sources is any[] — find exact slug match in additional_metadata
-    const sources: any[] = searchResponse.sources ?? []
-    let pageSource =
-      sources.find(
-        (s) => (s.additional_metadata?.slug as string) === slug || s.id === slug
-      ) ?? sources[0] ?? null
+    // 1b. Fallback to fuzzy boolean recall if direct fetch missed.
+    const searchResponse = pageSource
+      ? { sources: [pageSource], chunks: [] as any[] }
+      : await hydra.recall.booleanRecall({
+          tenant_id: 'default',
+          query: slug,
+          operator: 'and',
+        })
 
-    // Fallback: also check chunks
     if (!pageSource) {
-      const chunk = (searchResponse.chunks ?? []).find(
-        (c) => c.source_id === slug
-      )
-      if (chunk) {
-        pageSource = {
-          id: chunk.source_id,
-          title: chunk.source_title,
-          additional_metadata: chunk.additional_metadata ?? undefined,
-          metadata: chunk.metadata ?? undefined,
+      const sources: any[] = searchResponse.sources ?? []
+      pageSource =
+        sources.find(
+          (s) => (s.additional_metadata?.slug as string) === slug || s.id === slug
+        ) ?? sources[0] ?? null
+
+      if (!pageSource) {
+        const chunk = (searchResponse.chunks ?? []).find(
+          (c: any) => c.source_id === slug
+        )
+        if (chunk) {
+          pageSource = {
+            id: chunk.source_id,
+            title: chunk.source_title,
+            additional_metadata: chunk.additional_metadata ?? undefined,
+            metadata: chunk.metadata ?? undefined,
+          }
         }
       }
     }
@@ -73,13 +97,14 @@ export async function GET(
       }
     }
 
-    const chunks = (searchResponse.chunks ?? []).filter((c) => c.source_id === pageSource.id)
+    const chunks = (searchResponse.chunks ?? []).filter((c: any) => c.source_id === pageSource.id)
     const firstChunk = chunks[0]
     const parsedDoc = firstChunk ? (() => { try { return JSON.parse(firstChunk.chunk_content) } catch { return null } })() : null
     const parsedItem = Array.isArray(parsedDoc) ? parsedDoc[0] : parsedDoc
 
-    const content = (parsedItem?.content?.markdown || parsedItem?.markdown)
-      || chunks.map((c) => extractMarkdown(c.chunk_content)).filter(Boolean).join('\n\n')
+    const content = directChunkContent
+      || (parsedItem?.content?.markdown || parsedItem?.markdown)
+      || chunks.map((c: any) => extractMarkdown(c.chunk_content)).filter(Boolean).join('\n\n')
       || ''
 
     const meta = parsedDoc?.document_metadata ?? pageSource.additional_metadata ?? {}

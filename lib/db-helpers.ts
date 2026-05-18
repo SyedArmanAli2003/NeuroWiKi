@@ -266,6 +266,10 @@ export function pageSlugExists(slug: string): boolean {
   return !!row
 }
 
+export function getPageBySlug(slug: string): PageHealth | null {
+  return db.prepare<[string], PageHealth>(`SELECT * FROM pages WHERE slug = ?`).get(slug) ?? null
+}
+
 // ---------------------------------------------------------------------------
 // Lint Sweeps
 // ---------------------------------------------------------------------------
