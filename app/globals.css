@@ -49,6 +49,7 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
   --font-serif: "Instrument Serif", serif;
+  --color-gold: #F4C77B;
 }
 
 :root {
@@ -146,6 +147,127 @@
   font-style: italic;
 }
 
+/* ── Type scale (app-wide) ──────────────────────────────────── */
+:root {
+  --fs-micro:   11px;   /* kbd, footer chips */
+  --fs-kicker:  12px;   /* uppercase eyebrow labels */
+  --fs-meta:    12.5px; /* mono timestamps, meta */
+  --fs-nav:     13px;   /* topbar nav, breadcrumb */
+  --fs-body-sm: 14px;   /* secondary body */
+  --fs-body:    15.5px; /* primary body */
+  --fs-body-lg: 17px;   /* composer, large body */
+  --fs-quote:   19px;   /* serif italic quotes, review */
+  --fs-title:   22px;   /* section titles */
+  --fs-h1:      clamp(2.2rem, 5.5vw, 3.2rem); /* date hero */
+}
+
+/* ── Design tokens app-wide ────────────────────────────────── */
+:root {
+  --ink: #DEDBC8;
+  --ink-strong: #EFEDDD;
+  --ink-soft: rgba(222,219,200,0.62);
+  --ink-mute: rgba(222,219,200,0.36);
+  --ink-faint: rgba(222,219,200,0.18);
+  --hair: rgba(222,219,200,0.08);
+  --hair-strong: rgba(222,219,200,0.18);
+  --surface: #121110;
+  --surface-hi: #1a1917;
+  --surface-2: #0e0d0c;
+  --warm: #F4C77B;
+  --warm-soft: rgba(244,199,123,0.5);
+  --warm-faint: rgba(244,199,123,0.12);
+}
+
+.diary,
+.app-canvas {
+  color: var(--ink);
+}
+
+.diary em,
+.diary .serif,
+.app-canvas em,
+.app-canvas .serif {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.kicker {
+  font-size: var(--fs-kicker);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+
+.kicker-rule {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kicker-rule::before {
+  content: '';
+  display: block;
+  width: 14px;
+  height: 1px;
+  background: var(--ink-faint);
+}
+
+.sec-title {
+  font-size: var(--fs-title);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  color: var(--ink-strong);
+}
+
+.sec-meta {
+  font-size: var(--fs-kicker);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+
+.hairline {
+  border-bottom: 1px solid var(--hair);
+}
+
+.more-pill {
+  font-size: var(--fs-kicker);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  color: var(--ink-mute);
+  transition: all 0.18s ease;
+}
+.more-pill:hover { color: var(--ink); border-color: var(--hair-strong); background: rgba(222,219,200,0.04); }
+
+.diary input::placeholder,
+.diary textarea::placeholder,
+.app-canvas input::placeholder,
+.app-canvas textarea::placeholder {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+/* Reusable card primitive */
+.app-card {
+  background: var(--surface);
+  border: 1px solid var(--hair);
+  border-radius: 18px;
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+.app-card:hover {
+  background: var(--surface-hi);
+  border-color: var(--hair-strong);
+  transform: translateY(-1px);
+}
+
 .noise-overlay {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   background-repeat: repeat;
@@ -156,6 +278,41 @@
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 200px 200px;
+}
+
+/* Lead paragraph styling — first <p> in wiki-prose-enhanced */
+.wiki-prose-enhanced .wiki-prose > p:first-of-type {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.2rem;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+  color: var(--ink-strong);
+  margin-bottom: 1.5rem;
+}
+.wiki-prose-enhanced .wiki-prose > p:first-of-type::first-letter {
+  font-size: 1.5em;
+  color: var(--warm-soft);
+}
+
+/* Improve body prose readability */
+.wiki-prose-enhanced .wiki-prose p {
+  font-size: 1rem;
+  line-height: 1.85;
+  color: rgba(222,219,200,0.78);
+  letter-spacing: -0.003em;
+  margin-bottom: 1.25rem;
+}
+.wiki-prose-enhanced .wiki-prose h2 {
+  font-size: 1.35rem;
+  font-weight: 500;
+  margin-top: 2.5rem;
+  letter-spacing: -0.01em;
+}
+.wiki-prose-enhanced .wiki-prose h3 {
+  font-size: 1.1rem;
+  margin-top: 2rem;
 }
 
 .wiki-prose h1 { font-size: 1.6rem; font-weight: 700; color: #E1E0CC; margin: 2rem 0 0.75rem; line-height: 1.2; }
