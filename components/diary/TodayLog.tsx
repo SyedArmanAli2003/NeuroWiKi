@@ -8,6 +8,7 @@ interface Entry {
   id: number
   time: string
   kind: EntryKind
+  title?: string | null
   text: string
   filed_under?: string | null
   justAdded?: boolean
@@ -55,6 +56,7 @@ function EntryRow({ entry, onUpdate, date }: { entry: Entry; onUpdate: (id: numb
       body: JSON.stringify({ id: entry.id, text: trimmed }),
     })
     onUpdate(entry.id, trimmed)
+    // entry.text local update handled by parent
     setEditing(false)
   }
 
@@ -105,8 +107,9 @@ function EntryRow({ entry, onUpdate, date }: { entry: Entry; onUpdate: (id: numb
               autoFocus
               className="w-full bg-transparent resize-none outline-none"
               style={{
+                fontFamily: 'var(--font-reading)',
                 fontSize: 'var(--fs-body)',
-                lineHeight: 1.6,
+                lineHeight: 'var(--lh-roomy)',
                 color: 'var(--ink-strong)',
                 borderBottom: '1px dashed var(--hair-strong)',
                 paddingBottom: '4px',
@@ -129,7 +132,19 @@ function EntryRow({ entry, onUpdate, date }: { entry: Entry; onUpdate: (id: numb
           <>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p style={{ fontSize: 'var(--fs-body)', lineHeight: 1.6, color: 'var(--ink-strong)', letterSpacing: '-0.003em' }}>
+                {entry.title && (
+                  <p style={{
+                    fontSize: 'var(--fs-title)',
+                    fontWeight: 500,
+                    lineHeight: 1.25,
+                    letterSpacing: '-0.015em',
+                    color: 'var(--ink-strong)',
+                    marginBottom: '6px',
+                  }}>
+                    {entry.title}
+                  </p>
+                )}
+                <p style={{ fontFamily: 'var(--font-reading)', fontSize: 'var(--fs-body)', lineHeight: 'var(--lh-roomy)', color: entry.title ? 'var(--ink-soft)' : 'var(--ink-strong)', letterSpacing: '-0.003em' }}>
                   {entry.text}
                 </p>
                 {entry.filed_under && (
