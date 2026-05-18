@@ -44,6 +44,14 @@ export async function GET(
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
 
+    const stripTrailingMeta = (md: string): string => {
+      // Remove trailing JSON metadata bleed (", "files": [], "layout": [], ...)
+      // Cut at first occurrence of these known trailing JSON keys
+      const cut = md.search(/["',]\s*"(files|layout|tenant_metadata|document_metadata|meta|sub_tenant_id|sourceSentences|verified|verifiedAt|sourceId|manuallyEdited)"\s*:/)
+      if (cut > 0) return md.slice(0, cut).replace(/[",\s]+$/, '')
+      return md
+    }
+
     const extractMarkdown = (chunkContent: string): string => {
       if (!chunkContent) return ''
       try {
@@ -54,10 +62,14 @@ export async function GET(
         // Regex fallback: extract "markdown": "..." even from truncated/malformed JSON
         const m = chunkContent.match(/"markdown"\s*:\s*"((?:[^"\\]|\\.)*)/)
         if (m?.[1]) {
-          try { return JSON.parse(`"${m[1]}"`) } catch { return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') }
+          let raw: string
+          try { raw = JSON.parse(`"${m[1]}"`) }
+          catch { raw = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') }
+          return stripTrailingMeta(raw)
         }
         // Not JSON-shaped → treat as plain text content
-        return chunkContent.startsWith('{') || chunkContent.startsWith('[') ? '' : chunkContent
+        if (chunkContent.startsWith('{') || chunkContent.startsWith('[')) return ''
+        return stripTrailingMeta(chunkContent)
       }
     }
 
