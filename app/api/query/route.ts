@@ -1,5 +1,5 @@
 import { hydra } from '@/lib/hydra'
-import { google } from '@ai-sdk/google'
+import { llm } from '@/lib/llm'
 import { streamText } from 'ai'
 import { db } from '@/lib/db'
 
@@ -81,7 +81,7 @@ If the answer is not in the wiki, say "This isn't covered in the wiki yet. Try a
 Keep answers concise and factual.`
 
   const stream = streamText({
-    model: google('gemini-2.0-flash'),
+    model: llm(),
     system: systemPrompt,
     prompt: `Question: ${question}\n\nWiki context:\n${context}`,
     maxOutputTokens: 600,

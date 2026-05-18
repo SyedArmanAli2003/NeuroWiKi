@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateObject } from 'ai'
-import { google } from '@ai-sdk/google'
+import { llm } from '@/lib/llm'
 import { z } from 'zod'
 import { hydra, ensureTenant, waitForIngestion } from '@/lib/hydra'
 import { upsertPageHealth, upsertPageLinks, getAllPages } from '@/lib/db-helpers'
@@ -70,8 +70,7 @@ export async function POST(req: NextRequest) {
 
     try {
       const { object: page } = await generateObject({
-        model: google('gemini-2.5-flash'),
-        providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+        model: llm(),
         schema: PageSchema,
         prompt: `You are a wiki compiler. Create a wiki page for the entity "${entity}" using ONLY the information present in the source pages below. Do not add anything from training knowledge.
 

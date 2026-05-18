@@ -1,5 +1,5 @@
 import { generateObject } from 'ai'
-import { google } from '@ai-sdk/google'
+import { llm } from '@/lib/llm'
 import { z } from 'zod'
 import { hydra } from '@/lib/hydra'
 import { withGeminiRetry } from '@/lib/gemini-retry'
@@ -175,8 +175,7 @@ export async function runLintSweep(tenantId: string = 'default'): Promise<LintRe
         .join('\n\n---\n\n')
 
       const { object } = await withGeminiRetry(() => generateObject({
-        model: google('gemini-2.0-flash'),
-        providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+        model: llm(),
         schema: GapSchema,
         prompt: `You are a wiki health auditor. Analyze the PAGES BEING ANALYZED below for:
 1. "gaps": entities (people, concepts, places, tools) mentioned in multiple analyzed pages but with NO dedicated page in the existing slug list

@@ -1,10 +1,10 @@
 import { generateObject, NoObjectGeneratedError } from 'ai'
-import { google } from '@ai-sdk/google'
+import { llm } from '../llm'
 import { withGeminiRetry } from '../gemini-retry'
 import { z } from 'zod'
 import { hydra, ensureTenant, waitForIngestion } from '../hydra'
 import { upsertPageHealth, upsertPageLinks, getAllPages, enqueueReindex } from '../db-helpers'
-import { findExistingPage, absorbIntoExisting, enrichRelatedPage } from './absorb-agent'
+import { findExistingPage, absorbIntoExisting, enrichRelatedPage, findDuplicateSlug } from './absorb-agent'
 
 export interface IngestResult {
   pagesCreated: number
@@ -58,8 +58,7 @@ export async function runIngestAgent(
 
   // Step 2 — Generate pages with Gemini
   const result = await withGeminiRetry(() => generateObject({
-    model: google('gemini-2.0-flash'),
-    providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+    model: llm(),
     schema: z.object({
       pages: z.array(
         z.object({
@@ -126,6 +125,16 @@ Return JSON with a "pages" key containing an array. Each page must include:
       if (!isVerified) {
         console.warn(`Skipping page ${page.slug} — claims could not be verified against source`)
         continue
+      }
+
+      // Dedup: redirect to canonical slug if a near-duplicate already exists
+      const duplicateSlug = findDuplicateSlug(
+        { slug: page.slug, title: page.title },
+        existingPages.map(p => ({ slug: p.slug, title: p.title }))
+      )
+      if (duplicateSlug && duplicateSlug !== page.slug) {
+        console.log(`[ingest] Dedup: "${page.slug}" → "${duplicateSlug}" (near-duplicate match)`)
+        page.slug = duplicateSlug
       }
 
       // Absorb: check if page already exists — if so, enrich rather than overwrite

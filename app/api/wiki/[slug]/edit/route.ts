@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateObject } from 'ai'
-import { google } from '@ai-sdk/google'
+import { llm } from '@/lib/llm'
 import { z } from 'zod'
 import { hydra } from '@/lib/hydra'
 
@@ -95,8 +95,7 @@ export async function POST(
   const { content, title } = pageData
 
   const { object } = await generateObject({
-    model: google('gemini-2.5-flash'),
-    providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+    model: llm(),
     schema: EditSchema,
     prompt: `You are a wiki editor. Apply the following edit instruction to the wiki page below.
 

@@ -1,5 +1,5 @@
 import { generateObject } from 'ai'
-import { google } from '@ai-sdk/google'
+import { llm } from '@/lib/llm'
 import { z } from 'zod'
 import { hydra } from '@/lib/hydra'
 import { withGeminiRetry } from '@/lib/gemini-retry'
@@ -20,6 +20,35 @@ const MergeSchema = z.object({
     'Array combining ALL previous source sentences PLUS new exact quotes from the new source backing new claims'
   ),
 })
+
+// Dedup: find a near-duplicate slug among existing pages.
+// Matches on (a) normalized slug equality (`open-ai` ↔ `openai`)
+// or (b) high title-token Jaccard similarity.
+export function findDuplicateSlug(
+  candidate: { slug: string; title: string },
+  existing: Array<{ slug: string; title: string }>,
+  jaccardThreshold = 0.7
+): string | null {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const tokens = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 2))
+  const candNormSlug = norm(candidate.slug)
+  const candTitleToks = tokens(candidate.title)
+
+  let best: { slug: string; score: number } | null = null
+  for (const p of existing) {
+    if (norm(p.slug) === candNormSlug) return p.slug
+    const pToks = tokens(p.title)
+    if (candTitleToks.size === 0 || pToks.size === 0) continue
+    let inter = 0
+    for (const t of candTitleToks) if (pToks.has(t)) inter++
+    const union = candTitleToks.size + pToks.size - inter
+    const jaccard = union === 0 ? 0 : inter / union
+    if (jaccard >= jaccardThreshold && (!best || jaccard > best.score)) {
+      best = { slug: p.slug, score: jaccard }
+    }
+  }
+  return best?.slug ?? null
+}
 
 export async function findExistingPage(
   slug: string,
@@ -113,8 +142,7 @@ export async function absorbIntoExisting(
     : '(no slugs available — do not add wikilinks)'
 
   const { object } = await withGeminiRetry(() => generateObject({
-    model: google('gemini-2.0-flash'),
-    providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+    model: llm(),
     schema: MergeSchema,
     prompt: `You are an expert wiki editor updating an existing knowledge base page with new information.
 
