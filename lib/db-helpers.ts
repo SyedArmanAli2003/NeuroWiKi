@@ -41,6 +41,8 @@ export interface PageHealth {
   slug: string
   title: string
   type: string
+  summary: string | null
+  source_id: number | null
   confidence: number
   last_validated: string
   is_stale: number
@@ -178,13 +180,24 @@ export function getLogsBySourceId(sourceId: number): Log[] {
 // Pages (Wiki Health Deprecation Pipeline)
 // ---------------------------------------------------------------------------
 
-export function upsertPageHealth(data: { slug: string; title: string; type?: string; confidence?: number; stale_reason?: string | null; hydra_doc_id: string }): void {
+export function upsertPageHealth(data: {
+  slug: string
+  title: string
+  type?: string
+  summary?: string
+  source_id?: number
+  confidence?: number
+  stale_reason?: string | null
+  hydra_doc_id: string
+}): void {
   db.prepare(`
-    INSERT INTO pages (slug, title, type, confidence, is_stale, stale_reason, hydra_doc_id, last_validated)
-    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO pages (slug, title, type, summary, source_id, confidence, is_stale, stale_reason, hydra_doc_id, last_validated)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(slug) DO UPDATE SET
       title = excluded.title,
       type = excluded.type,
+      summary = excluded.summary,
+      source_id = excluded.source_id,
       confidence = excluded.confidence,
       is_stale = excluded.is_stale,
       stale_reason = excluded.stale_reason,
@@ -195,6 +208,8 @@ export function upsertPageHealth(data: { slug: string; title: string; type?: str
     data.slug,
     data.title,
     data.type ?? 'concept',
+    data.summary ?? null,
+    data.source_id ?? null,
     data.confidence ?? 100,
     data.stale_reason ? 1 : 0,
     data.stale_reason ?? null,
@@ -230,6 +245,48 @@ export function markPageStale(slug: string, reason: string): void {
     WHERE slug = ?
   `).run(reason, slug)
 }
+
+// ---------------------------------------------------------------------------
+// Page Links (wikilink graph edges)
+// ---------------------------------------------------------------------------
+
+export function upsertPageLinks(sourceSlug: string, targetSlugs: string[]): void {
+  const stmt = db.prepare<[string, string]>(
+    `INSERT OR IGNORE INTO page_links (source_slug, target_slug) VALUES (?, ?)`
+  )
+  for (const target of targetSlugs) {
+    if (target !== sourceSlug) stmt.run(sourceSlug, target)
+  }
+}
+
+export function getAllPageLinks(): Array<{ source_slug: string; target_slug: string }> {
+  return db.prepare(`SELECT source_slug, target_slug FROM page_links`).all() as any[]
+}
+
+// ---------------------------------------------------------------------------
+// Lint Sweeps
+// ---------------------------------------------------------------------------
+
+export function getLastLintTime(): string | null {
+  const row = db.prepare(
+    `SELECT ran_at FROM lint_sweeps ORDER BY ran_at DESC LIMIT 1`
+  ).get() as { ran_at: string } | undefined
+  return row?.ran_at ?? null
+}
+
+export function recordLintSweep(pagesAnalyzed: number, issuesFound: number): void {
+  db.prepare(
+    `INSERT INTO lint_sweeps (pages_analyzed, issues_found) VALUES (?, ?)`
+  ).run(pagesAnalyzed, issuesFound)
+}
+
+export function getPagesUpdatedSince(since: string): PageHealth[] {
+  return db.prepare<[string], PageHealth>(
+    `SELECT * FROM pages WHERE updated_at > ? ORDER BY updated_at DESC`
+  ).all(since)
+}
+
+// ---------------------------------------------------------------------------
 
 export function archivePage(slug: string): void {
   db.prepare<[string]>(`UPDATE pages SET is_stale = 1, confidence = 0, updated_at = CURRENT_TIMESTAMP WHERE slug = ?`).run(slug)

@@ -18,20 +18,19 @@ const ContradictionSchema = z.object({
 
 async function getPageBySlug(slug: string) {
   try {
-    const res = await hydra.fetch.content({
+    const res = await hydra.fetch.listData({
       tenant_id: 'default',
-      source_id: slug
+      kind: 'knowledge',
+      source_ids: [slug],
     }) as any
-    
-    if (res) {
+    const item = (res?.sources ?? [])[0]
+    if (item) {
       return {
         slug,
-        title: res.title || '',
-        content: res.description || res.content?.text || '',
-        type: res.additional_metadata?.type || res.metadata?.category || 'concept',
-        summary: res.metadata?.summary || '',
-        originalMetadata: res.metadata,
-        originalAdditionalMetadata: res.additional_metadata,
+        title: item.title || '',
+        content: item.content?.markdown || item.content?.text || '',
+        type: item.document_metadata?.category || 'concept',
+        summary: item.document_metadata?.summary || '',
       }
     }
   } catch (error) {
@@ -48,10 +47,14 @@ async function upsertPage(page: any) {
       sub_tenant_id: 'default',
       id: page.slug,
       title: page.title,
-      type: 'webpage',
-      content: { text: page.content },
-      metadata: page.originalMetadata || {},
-      additional_metadata: page.originalAdditionalMetadata || {},
+      type: 'document',
+      content: { markdown: page.content },
+      document_metadata: {
+        category: page.type,
+        summary: page.summary,
+        slug: page.slug,
+        updated_at: page.updated_at,
+      },
     }])
   })
 }
@@ -95,7 +98,8 @@ Return JSON only.
 `
 
   const { object } = await generateObject({
-    model: google('gemini-2.5-flash'), // Use 2.5-flash as it's correctly configured
+    model: google('gemini-2.5-flash'),
+    providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
     schema: ContradictionSchema,
     prompt,
   })
@@ -115,9 +119,29 @@ Return JSON only.
     ) {
       const existing = await getPageBySlug(contradiction.existingPageSlug)
       if (existing) {
+        const { object: rewritten } = await generateObject({
+          model: google('gemini-2.5-flash'),
+          providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+          schema: z.object({ content: z.string() }),
+          prompt: `You are a wiki editor. Update this page to incorporate a correction.
+
+EXISTING CONTENT:
+"""
+${existing.content}
+"""
+
+CORRECTION TO INTEGRATE:
+"${contradiction.suggestedUpdate}"
+
+Rules:
+- Integrate the correction naturally into the relevant section — do not append it at the end
+- Keep all other content intact
+- Do not add headers or notes about the update
+- Return only the updated content`,
+        })
         await upsertPage({
           ...existing,
-          content: existing.content + `\n\n> **Updated:** ${contradiction.suggestedUpdate}`,
+          content: rewritten.content,
           updated_at: new Date().toISOString(),
         })
         updated++
