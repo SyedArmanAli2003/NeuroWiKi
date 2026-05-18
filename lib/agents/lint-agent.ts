@@ -104,7 +104,9 @@ export async function runLintSweep(tenantId: string = 'default'): Promise<LintRe
   const slugToTitle = new Map(hydraPages.map(p => [p.slug, p.title]))
 
   // ── Fix 2: Connected component island detection ────────────────────────────
-  const allLinks = getAllPageLinks()
+  const allLinks = getAllPageLinks().filter(
+    l => slugSet.has(l.source_slug) && slugSet.has(l.target_slug)
+  )
   const components = findConnectedComponents([...slugSet], allLinks)
 
   // Largest component = main cluster. All others are islands.

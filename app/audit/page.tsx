@@ -96,7 +96,7 @@ export default function AuditPage() {
             <div className="mb-8">
               <p className="text-[9px] tracking-[0.3em] uppercase mb-4"
                 style={{ color: 'rgba(222,219,200,0.3)' }}>
-                STALE PAGES (not validated in 30+ days)
+                STALE PAGES (not validated recently)
               </p>
               <div className="space-y-2">
                 {audit.stale.map(page => (

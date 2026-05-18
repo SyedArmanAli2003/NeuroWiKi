@@ -36,15 +36,27 @@ export async function findExistingPage(
     )
     if (!match) return null
 
-    // Try to recover sourceSentences from stored metadata
     const meta = match.additional_metadata ?? {}
     const rawSentences = meta.sourceSentences
     const sourceSentences: string[] = Array.isArray(rawSentences) ? rawSentences : []
 
+    // Content lives in chunks, not in the source object itself
+    const chunks: any[] = res?.chunks ?? []
+    const matchChunk = chunks.find((c: any) => c.source_id === match.id)
+    let content = ''
+    if (matchChunk?.chunk_content) {
+      try {
+        const parsed = JSON.parse(matchChunk.chunk_content)
+        content = parsed?.content?.markdown ?? matchChunk.chunk_content
+      } catch {
+        content = matchChunk.chunk_content
+      }
+    }
+
     return {
       slug,
       title: match.title ?? '',
-      content: match.description ?? match.content?.markdown ?? '',
+      content,
       summary: meta.summary ?? '',
       type: meta.category ?? 'concept',
       sourceSentences,
