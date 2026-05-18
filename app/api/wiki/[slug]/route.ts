@@ -111,3 +111,11 @@ export async function GET(
   }
 }
 
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+  const resolvedParams = await params
+  const { title, content, summary, type } = await req.json()
+  const { upsertPage } = await import('@/lib/db-helpers')
+  const page = upsertPage({ slug: resolvedParams.slug, title, content, summary, type })
+  return NextResponse.json({ page })
+}
+
