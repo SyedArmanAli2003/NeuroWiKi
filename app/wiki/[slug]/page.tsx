@@ -1,9 +1,11 @@
 import { WikiRenderer } from '@/components/WikiRenderer'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { CopyLink } from '@/components/CopyLink'
 import { StickyTitle } from '@/components/StickyTitle'
 import { WikiEditAgent } from '@/components/WikiEditAgent'
+import { RenameSlug } from '@/components/RenameSlug'
+import { resolveSlugAlias } from '@/lib/db-helpers'
 
 const TYPE_COLORS: Record<string, { color: string; bg: string; border: string }> = {
   concept:      { color: '#C7B8FF', bg: 'rgba(199,184,255,0.07)', border: 'rgba(199,184,255,0.22)' },
@@ -98,7 +100,11 @@ function SidebarLink({ href, label, type }: { href: string; label: string; type?
 export default async function WikiPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const [data, children] = await Promise.all([getPage(slug), getChildren(slug)])
-  if (!data) notFound()
+  if (!data) {
+    const aliasTarget = resolveSlugAlias(slug)
+    if (aliasTarget && aliasTarget !== slug) redirect(`/wiki/${aliasTarget}`)
+    notFound()
+  }
 
   const { page, relatedPages = [], backlinks = [] } = data
   const headings = extractHeadings(page.content)
@@ -135,6 +141,7 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
                 ✎ Edit
               </Link>
               <WikiEditAgent slug={page.slug} title={page.title} type={page.type} currentContent={page.content} />
+              <RenameSlug slug={page.slug} />
               <CopyLink slug={slug} />
             </div>
           </div>

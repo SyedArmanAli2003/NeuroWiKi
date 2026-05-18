@@ -111,6 +111,13 @@ function createTables(db: Database.Database): void {
       PRIMARY KEY (source_slug, target_slug)
     );
 
+    -- Old slug -> new slug redirects so renamed pages stay reachable
+    CREATE TABLE IF NOT EXISTS slug_aliases (
+      old_slug TEXT PRIMARY KEY,
+      new_slug TEXT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Lint sweep audit trail — tracks last run time for incremental analysis
     CREATE TABLE IF NOT EXISTS lint_sweeps (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,

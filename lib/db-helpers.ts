@@ -239,6 +239,34 @@ export function getAllPageLinks(): Array<{ source_slug: string; target_slug: str
 }
 
 // ---------------------------------------------------------------------------
+// Slug rename + aliases
+// ---------------------------------------------------------------------------
+
+export function resolveSlugAlias(slug: string): string | null {
+  const row = db.prepare(`SELECT new_slug FROM slug_aliases WHERE old_slug = ?`).get(slug) as { new_slug: string } | undefined
+  return row?.new_slug ?? null
+}
+
+export function renamePageSlug(oldSlug: string, newSlug: string): void {
+  const tx = db.transaction(() => {
+    db.prepare(`UPDATE pages SET slug = ?, updated_at = CURRENT_TIMESTAMP WHERE slug = ?`).run(newSlug, oldSlug)
+    db.prepare(`UPDATE page_links SET source_slug = ? WHERE source_slug = ?`).run(newSlug, oldSlug)
+    db.prepare(`UPDATE page_links SET target_slug = ? WHERE target_slug = ?`).run(newSlug, oldSlug)
+    db.prepare(`INSERT OR REPLACE INTO slug_aliases (old_slug, new_slug) VALUES (?, ?)`).run(oldSlug, newSlug)
+    // If newSlug was previously an alias, drop it (no self-redirect)
+    db.prepare(`DELETE FROM slug_aliases WHERE old_slug = ?`).run(newSlug)
+    // Re-point any chain: any alias whose new_slug was oldSlug now points to newSlug
+    db.prepare(`UPDATE slug_aliases SET new_slug = ? WHERE new_slug = ?`).run(newSlug, oldSlug)
+  })
+  tx()
+}
+
+export function pageSlugExists(slug: string): boolean {
+  const row = db.prepare(`SELECT 1 FROM pages WHERE slug = ?`).get(slug)
+  return !!row
+}
+
+// ---------------------------------------------------------------------------
 // Lint Sweeps
 // ---------------------------------------------------------------------------
 
