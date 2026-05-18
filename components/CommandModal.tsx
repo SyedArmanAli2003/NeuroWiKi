@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
-import { BookOpen, Plus, Network, ShieldCheck, Search, X } from 'lucide-react'
+import { BookOpen, Plus, Network, ShieldCheck, Search, X, NotebookPen } from 'lucide-react'
 
 interface Page {
   slug: string
@@ -24,10 +24,10 @@ export function CommandModal({ open, onClose }: { open: boolean; onClose: () => 
   const [allPages, setAllPages] = useState<Page[]>([])
   const [results, setResults]   = useState<Page[]>([])
 
-  // Fetch pages once when modal first opens
+  // Fetch pages once when modal first opens — include diary captures
   useEffect(() => {
     if (open && allPages.length === 0) {
-      fetch('/api/wiki')
+      fetch('/api/wiki?includeDiary=1')
         .then(r => r.json())
         .then((d: any) => setAllPages(Array.isArray(d) ? d : (d.pages ?? [])))
         .catch(() => {})
@@ -35,7 +35,7 @@ export function CommandModal({ open, onClose }: { open: boolean; onClose: () => 
     if (open) setQuery('')
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Live filter
+  // Live filter — keep more results so both groups can show
   useEffect(() => {
     if (!query.trim()) { setResults([]); return }
     const q = query.toLowerCase()
@@ -45,9 +45,12 @@ export function CommandModal({ open, onClose }: { open: boolean; onClose: () => 
           p.title.toLowerCase().includes(q) ||
           (p.summary ?? '').toLowerCase().includes(q)
         )
-        .slice(0, 6)
+        .slice(0, 10)
     )
   }, [query, allPages])
+
+  const pageResults    = results.filter(p => p.type !== 'diary')
+  const captureResults = results.filter(p => p.type === 'diary')
 
   // ESC to close
   useEffect(() => {
@@ -107,31 +110,65 @@ export function CommandModal({ open, onClose }: { open: boolean; onClose: () => 
               <div className="max-h-80 overflow-y-auto">
                 {query && results.length > 0 && (
                   <div className="p-2">
-                    <p className="text-[9px] tracking-[0.3em] uppercase px-2 py-1.5"
-                       style={{ color: 'rgba(222,219,200,0.25)' }}>
-                      Pages
-                    </p>
-                    {results.map(page => (
-                      <Link
-                        key={page.slug}
-                        href={`/wiki/${page.slug}`}
-                        onClick={onClose}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors"
-                      >
-                        <BookOpen size={13} style={{ color: 'rgba(222,219,200,0.3)', flexShrink: 0 }} />
-                        <div className="min-w-0">
-                          <p className="text-sm truncate" style={{ color: '#E1E0CC' }}>
-                            {page.title}
-                          </p>
-                          {page.summary && (
-                            <p className="text-[10px] truncate mt-0.5"
-                               style={{ color: 'rgba(222,219,200,0.35)' }}>
-                              {page.summary}
-                            </p>
-                          )}
-                        </div>
-                      </Link>
-                    ))}
+                    {pageResults.length > 0 && (
+                      <>
+                        <p className="text-[9px] tracking-[0.3em] uppercase px-2 py-1.5"
+                           style={{ color: 'rgba(222,219,200,0.25)' }}>
+                          Pages · {pageResults.length}
+                        </p>
+                        {pageResults.map(page => (
+                          <Link
+                            key={page.slug}
+                            href={`/wiki/${page.slug}`}
+                            onClick={onClose}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors"
+                          >
+                            <BookOpen size={13} style={{ color: 'rgba(222,219,200,0.3)', flexShrink: 0 }} />
+                            <div className="min-w-0">
+                              <p className="text-sm truncate" style={{ color: '#E1E0CC' }}>
+                                {page.title}
+                              </p>
+                              {page.summary && (
+                                <p className="text-[10px] truncate mt-0.5"
+                                   style={{ color: 'rgba(222,219,200,0.35)' }}>
+                                  {page.summary}
+                                </p>
+                              )}
+                            </div>
+                          </Link>
+                        ))}
+                      </>
+                    )}
+
+                    {captureResults.length > 0 && (
+                      <>
+                        <p className="text-[9px] tracking-[0.3em] uppercase px-2 py-1.5 mt-2"
+                           style={{ color: 'rgba(244,199,123,0.55)' }}>
+                          ✦ Captures · {captureResults.length}
+                        </p>
+                        {captureResults.map(page => (
+                          <Link
+                            key={page.slug}
+                            href={`/wiki/${page.slug}`}
+                            onClick={onClose}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors"
+                          >
+                            <NotebookPen size={13} style={{ color: 'rgba(244,199,123,0.5)', flexShrink: 0 }} />
+                            <div className="min-w-0">
+                              <p className="text-sm truncate" style={{ color: '#E1E0CC' }}>
+                                {page.title}
+                              </p>
+                              {page.summary && (
+                                <p className="text-[10px] truncate mt-0.5"
+                                   style={{ color: 'rgba(222,219,200,0.35)' }}>
+                                  {page.summary}
+                                </p>
+                              )}
+                            </div>
+                          </Link>
+                        ))}
+                      </>
+                    )}
                   </div>
                 )}
 
