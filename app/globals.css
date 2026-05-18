@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Almarai:wght@300;400;700;800&family=Instrument+Serif:ital@1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Almarai:wght@300;400;700;800&family=Instrument+Serif:ital@1&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,500;8..60,600&display=swap');
 
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -140,7 +140,9 @@
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-* { font-family: 'Almarai', -apple-system, BlinkMacSystemFont, sans-serif; }
+html, body, button, input, textarea, select {
+  font-family: 'Almarai', -apple-system, BlinkMacSystemFont, sans-serif;
+}
 
 .font-serif-italic {
   font-family: 'Instrument Serif', serif;
@@ -153,12 +155,16 @@
   --fs-kicker:  12px;   /* uppercase eyebrow labels */
   --fs-meta:    12.5px; /* mono timestamps, meta */
   --fs-nav:     13px;   /* topbar nav, breadcrumb */
-  --fs-body-sm: 14px;   /* secondary body */
-  --fs-body:    15.5px; /* primary body */
-  --fs-body-lg: 17px;   /* composer, large body */
-  --fs-quote:   19px;   /* serif italic quotes, review */
-  --fs-title:   22px;   /* section titles */
-  --fs-h1:      clamp(2.2rem, 5.5vw, 3.2rem); /* date hero */
+  --fs-body-sm: 14.5px; /* secondary body */
+  --fs-body:    16.5px; /* primary body */
+  --fs-body-lg: 18.5px; /* composer, large body */
+  --fs-quote:   20px;   /* serif italic quotes, review */
+  --fs-title:   23px;   /* section titles */
+  --fs-h1:      clamp(2.4rem, 5.8vw, 3.6rem); /* date hero */
+
+  /* Reading serif — body type for long-form */
+  --font-reading: 'Source Serif 4', 'Iowan Old Style', Georgia, serif;
+  --lh-roomy: 1.75;
 }
 
 /* ── Design tokens app-wide ────────────────────────────────── */
@@ -280,12 +286,22 @@
   background-size: 200px 200px;
 }
 
+/* Reading prose — diary entries + journal-style long-form */
+.reading-prose {
+  font-family: var(--font-reading);
+  font-size: var(--fs-body-lg);
+  line-height: var(--lh-roomy);
+  color: var(--ink);
+  letter-spacing: -0.003em;
+}
+.reading-prose p { margin-bottom: 1.1em; }
+
 /* Lead paragraph styling — first <p> in wiki-prose-enhanced */
 .wiki-prose-enhanced .wiki-prose > p:first-of-type {
   font-family: 'Instrument Serif', serif;
   font-style: italic;
   font-weight: 400;
-  font-size: 1.2rem;
+  font-size: 1.32rem;
   line-height: 1.55;
   letter-spacing: -0.005em;
   color: var(--ink-strong);
@@ -296,11 +312,13 @@
   color: var(--warm-soft);
 }
 
-/* Improve body prose readability */
-.wiki-prose-enhanced .wiki-prose p {
-  font-size: 1rem;
-  line-height: 1.85;
-  color: rgba(222,219,200,0.78);
+/* Improve body prose readability — serif for wiki body */
+.wiki-prose-enhanced .wiki-prose p,
+.wiki-prose-enhanced .wiki-prose li {
+  font-family: var(--font-reading);
+  font-size: 1.075rem;
+  line-height: var(--lh-roomy);
+  color: rgba(222,219,200,0.84);
   letter-spacing: -0.003em;
   margin-bottom: 1.25rem;
 }
@@ -319,7 +337,7 @@
 .wiki-prose h2 { font-size: 1.2rem; font-weight: 700; color: #E1E0CC; margin: 2rem 0 0.6rem; border-left: 2px solid rgba(222,219,200,0.2); padding-left: 0.75rem; }
 .wiki-prose h3 { font-size: 1rem; font-weight: 600; color: #DEDBC8; margin: 1.5rem 0 0.4rem; }
 .wiki-prose h4 { font-size: 0.9rem; font-weight: 600; color: rgba(222,219,200,0.7); margin: 1rem 0 0.3rem; text-transform: uppercase; letter-spacing: 0.05em; }
-.wiki-prose p { color: rgba(222,219,200,0.75); line-height: 1.85; margin-bottom: 1.1rem; font-size: 0.925rem; }
+.wiki-prose p { font-family: var(--font-reading); color: rgba(222,219,200,0.82); line-height: 1.75; margin-bottom: 1.15rem; font-size: 1.05rem; }
 .wiki-prose strong { color: #E1E0CC; font-weight: 600; }
 .wiki-prose em { color: rgba(222,219,200,0.85); font-style: italic; }
 .wiki-prose a { color: #DEDBC8; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(222,219,200,0.3); }

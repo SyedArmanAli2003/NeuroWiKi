@@ -51,7 +51,7 @@ export default function DiaryPage() {
 
   return (
     <div className="diary min-h-screen" style={{ background: '#000' }}>
-      <div className="mx-auto px-7" style={{ maxWidth: '760px' }}>
+      <div className="mx-auto px-7" style={{ maxWidth: '680px' }}>
 
         <DayHeader streak={streak} mood={meta?.mood ?? null} />
 
