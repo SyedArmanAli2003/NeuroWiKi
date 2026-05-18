@@ -36,7 +36,7 @@ async function verifyClaims(
 export async function runIngestAgent(
   sourceText: string,
   sourceId: number,
-  tenantId: string = 'default_tenant'
+  tenantId: string = 'default'
 ): Promise<IngestResult> {
   // Step 1: Fetch existing pages for the prompt
   let existingPages: any[] = []
@@ -59,7 +59,7 @@ export async function runIngestAgent(
 
   // Step 2 — Generate pages with Gemini
   const result = await generateObject({
-    model: google('gemini-1.5-pro'),
+    model: google('gemini-2.5-flash'),
     schema: z.object({
       pages: z.array(
         z.object({

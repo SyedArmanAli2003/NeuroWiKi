@@ -95,7 +95,7 @@ Return JSON only.
 `
 
   const { object } = await generateObject({
-    model: google('gemini-1.5-pro'), // Use 1.5-pro as it's correctly configured
+    model: google('gemini-2.5-flash'), // Use 2.5-flash as it's correctly configured
     schema: ContradictionSchema,
     prompt,
   })
