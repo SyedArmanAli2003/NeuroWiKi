@@ -5,14 +5,21 @@ export const revalidate = 60
 
 export async function GET() {
   try {
-    let response: any = {}
+    const items: any[] = []
+    let page = 1
     try {
-      response = (await hydra.fetch.listData({
-        tenant_id: 'default',
-        kind: 'knowledge',
-        page: 1,
-        page_size: 6,
-      })) as any
+      while (true) {
+        const response = (await hydra.fetch.listData({
+          tenant_id: 'default',
+          kind: 'knowledge',
+          page,
+          page_size: 100,
+        })) as any
+        const batch: any[] = response?.sources ?? []
+        items.push(...batch)
+        if (batch.length < 100) break
+        page++
+      }
     } catch (e: any) {
       if (e.message?.includes('Tenant default does not exist') || e.status === 404) {
         console.warn('Tenant default does not exist yet.')
@@ -20,8 +27,6 @@ export async function GET() {
         throw e
       }
     }
-
-    const items: any[] = response?.sources ?? []
 
     const pages = items.map((item: any) => ({
       slug: (item.document_metadata?.slug as string) || item.id,
