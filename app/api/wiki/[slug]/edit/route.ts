@@ -1,76 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { generateObject } from 'ai'
-import { llm } from '@/lib/llm'
+import { NextResponse, type NextRequest } from 'next/server'
+import { llm, loggedGenerateObject } from '@/lib/llm'
 import { z } from 'zod'
-import { hydra } from '@/lib/hydra'
+import { fetchPage, listPageMeta } from '@/lib/hydra-fetch'
 
 const EditSchema = z.object({
   content: z.string().describe('Full updated markdown content (without the # Title heading)'),
   summary: z.string().describe('One-sentence summary of the page after edits'),
 })
-
-async function fetchPageContent(slug: string): Promise<{ content: string; title: string; meta: any } | null> {
-  try {
-    const searchResponse = await hydra.recall.booleanRecall({
-      tenant_id: 'default',
-      query: slug,
-      operator: 'and',
-    }) as any
-
-    const sources: any[] = searchResponse.sources ?? []
-    let pageSource = sources.find(
-      (s: any) => (s.additional_metadata?.slug as string) === slug || s.id === slug
-    ) ?? sources[0] ?? null
-
-    if (!pageSource) {
-      const chunk = (searchResponse.chunks ?? []).find((c: any) => c.source_id === slug)
-      if (chunk) {
-        pageSource = {
-          id: chunk.source_id,
-          title: chunk.source_title,
-          additional_metadata: chunk.additional_metadata ?? undefined,
-        }
-      }
-    }
-
-    if (!pageSource) return null
-
-    const chunks = (searchResponse.chunks ?? []).filter((c: any) => c.source_id === pageSource.id)
-    const firstChunk = chunks[0]
-    const parsedDoc = firstChunk
-      ? (() => { try { return JSON.parse(firstChunk.chunk_content) } catch { return null } })()
-      : null
-
-    const extractMarkdown = (c: string) => {
-      try { return JSON.parse(c)?.content?.markdown ?? '' } catch { return c }
-    }
-
-    const content = parsedDoc?.content?.markdown
-      || chunks.map((c: any) => extractMarkdown(c.chunk_content)).filter(Boolean).join('\n\n')
-      || ''
-
-    const meta = parsedDoc?.document_metadata ?? pageSource.additional_metadata ?? {}
-    const title = parsedDoc?.title || pageSource.title || slug
-
-    return { content, title, meta }
-  } catch {
-    return null
-  }
-}
-
-async function getAllSlugs(): Promise<string[]> {
-  try {
-    const response = (await hydra.fetch.listData({
-      tenant_id: 'default',
-      kind: 'knowledge',
-      page: 1,
-      page_size: 100,
-    })) as any
-    return (response?.sources ?? []).map((i: any) => (i.document_metadata?.slug as string) || i.id)
-  } catch {
-    return []
-  }
-}
 
 export async function POST(
   req: NextRequest,
@@ -83,9 +19,9 @@ export async function POST(
     return NextResponse.json({ error: 'instruction required' }, { status: 400 })
   }
 
-  const [pageData, existingSlugs] = await Promise.all([
-    fetchPageContent(slug),
-    getAllSlugs(),
+  const [pageData, allPages] = await Promise.all([
+    fetchPage(slug),
+    listPageMeta(),
   ])
 
   if (!pageData) {
@@ -93,8 +29,9 @@ export async function POST(
   }
 
   const { content, title } = pageData
+  const existingSlugs = allPages.map((p) => p.slug)
 
-  const { object } = await generateObject({
+  const { object } = await loggedGenerateObject('wiki-edit', {
     model: llm(),
     schema: EditSchema,
     prompt: `You are a wiki editor. Apply the following edit instruction to the wiki page below.
@@ -108,7 +45,7 @@ CURRENT CONTENT (markdown, without title heading):
 ${content}
 
 EXISTING WIKI SLUGS (use [[slug]] wikilinks when referencing these pages):
-${existingSlugs.filter(s => s !== slug).join(', ')}
+${existingSlugs.filter((s: string) => s !== slug).join(', ')}
 
 Rules:
 - Return the full updated page content as markdown (do not include the "# ${title}" heading)

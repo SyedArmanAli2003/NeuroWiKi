@@ -13,11 +13,29 @@ export default function EditPage() {
   const [page, setPage] = useState<{ title: string; content: string; summary: string; type: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
+    let cancelled = false
+    setLoadError(null)
     fetch(`/api/wiki/${slug}`)
-      .then(r => r.json())
-      .then(d => setPage(d.page))
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}))
+          throw new Error(body?.error || `Failed to load page (${r.status})`)
+        }
+        return r.json()
+      })
+      .then((d) => {
+        if (cancelled) return
+        if (!d?.page) throw new Error('Page payload missing')
+        setPage(d.page)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setLoadError(e?.message || 'Failed to load page')
+      })
+    return () => { cancelled = true }
   }, [slug])
 
   const handleSave = useCallback(async () => {
@@ -53,6 +71,25 @@ export default function EditPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [handleSave])
+
+  if (loadError) return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-black gap-4 px-6 text-center">
+      <p className="text-sm" style={{ color: '#F49B9B' }}>Couldn’t load page</p>
+      <p className="text-xs" style={{ color: 'rgba(222,219,200,0.45)' }}>{loadError}</p>
+      <div className="flex gap-3">
+        <Link href={`/wiki/${slug}`} className="text-[11px] px-3 py-1.5 rounded-full border" style={{ borderColor: 'rgba(255,255,255,0.15)', color: 'rgba(222,219,200,0.7)' }}>
+          Back to page
+        </Link>
+        <button
+          onClick={() => location.reload()}
+          className="text-[11px] px-3 py-1.5 rounded-full"
+          style={{ background: '#DEDBC8', color: '#000' }}
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  )
 
   if (!page) return (
     <div className="flex items-center justify-center min-h-screen bg-black">

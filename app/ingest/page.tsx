@@ -184,6 +184,8 @@ export default function IngestPage() {
         setDone(true)
         setLoading(false)
         setFiles([])
+        setInput('')
+        setBulkUrls('')
         fetch('/api/logs?limit=10').then(r => r.json()).then(d => setHistory(d.logs || []))
       }, 600)
     } catch (e: any) {

@@ -1,31 +1,19 @@
-import { generateObject, NoObjectGeneratedError } from 'ai'
+import { NoObjectGeneratedError } from 'ai'
+import { loggedGenerateObject } from '@/lib/llm'
 import { llm } from '../llm'
 import { z } from 'zod'
-import { hydra, ensureTenant, waitForIngestion } from '../hydra'
+import { ensureTenant, hydra, waitForIngestion } from '../hydra'
 import { upsertPageHealth, upsertPageLinks, getAllPages, enqueueReindex } from '../db-helpers'
-import { findExistingPage, absorbIntoExisting, enrichRelatedPage, findDuplicateSlug } from './absorb-agent'
+import { findExistingPage, absorbIntoExisting, findDuplicateSlug } from './absorb-agent'
+import { listPageMeta } from '../hydra-fetch'
 
 export interface IngestResult {
   pagesCreated: number
   pages: Array<{ slug: string; title: string; type: string; content: string; isNew: boolean; indexed: boolean }>
 }
 
-async function verifyClaims(
-  page: { content: string; sourceSentences: string[] },
-  sourceText: string
-): Promise<boolean> {
-  for (const sentence of page.sourceSentences) {
-    const words = sentence.toLowerCase().split(' ').filter(w => w.length > 4)
-    if (words.length === 0) continue
-    const matches = words.filter(w => sourceText.toLowerCase().includes(w))
-    const matchRate = matches.length / words.length
-    if (matchRate < 0.6) {
-      console.warn(`Possible hallucination detected: "${sentence}" not found in source`)
-      return false
-    }
-  }
-  return true
-}
+// TODO: real claim verification (NLI / LLM judge). Old keyword heuristic deleted.
+// Add back when we have a real verifier — string overlap was theater.
 
 export async function runIngestAgent(
   sourceText: string,
@@ -36,28 +24,19 @@ export async function runIngestAgent(
   await ensureTenant(tenantId)
 
   // Step 1: Fetch existing pages for the prompt
-  let existingPages: any[] = []
-  try {
-    const res = (await hydra.fetch.listData({
-      tenant_id: tenantId,
-      kind: 'knowledge',
-      page: 1,
-      page_size: 100,
-    })) as any
-    const items: any[] = res?.sources ?? []
-    existingPages = items.map((item: any) => ({
-      slug: (item.document_metadata?.slug as string) || item.id,
-      title: item.title || '',
-      summary: (item.document_metadata?.summary as string) || '',
-    }))
-  } catch (e: any) {
-    const is404 = e?.statusCode === 404 || e?.body?.detail?.error_code === 'NOT_FOUND'
-    if (!is404) console.warn("Failed to fetch existing pages for prompt index", e)
-  }
+  const existingPageMeta = await listPageMeta(tenantId)
+  const existingPages = existingPageMeta.map((p) => ({
+    slug: p.slug,
+    title: p.title,
+    summary: p.summary,
+  }))
 
-  // Step 2 — Generate pages with Gemini
-  const result = await generateObject({
+  // Step 2 — Generate single comprehensive page
+  const MAX_PAGES = parseInt(process.env.MAX_PAGES_PER_SOURCE || '1', 10)
+  const SOURCE_LIMIT = parseInt(process.env.SOURCE_CHAR_LIMIT || '30000', 10)
+  const result = await loggedGenerateObject('ingest', {
     model: llm(),
+    maxOutputTokens: 4000,
     schema: z.object({
       pages: z.array(
         z.object({
@@ -65,29 +44,29 @@ export async function runIngestAgent(
           title: z.string(),
           type: z.enum(['concept', 'person', 'place', 'event', 'tool', 'organization']),
           summary: z.string(),
-          content: z.string().describe('150-300 word markdown, encyclopedic style'),
-          sourceSentences: z.array(z.string()).min(1).max(10),
+          content: z.string().describe('400-1200 word comprehensive markdown wiki page, encyclopedic style with sections'),
+          sourceSentences: z.array(z.string()).min(1).max(15),
         })
-      ),
+      ).min(1).max(MAX_PAGES),
     }),
     prompt: `You are a strict knowledge wiki compiler with zero tolerance for hallucination.
 
 SOURCE TEXT (this is the ONLY source of truth):
 """
-${sourceText.slice(0, 6000)}
+${sourceText.slice(0, SOURCE_LIMIT)}
 """
 
-EXISTING WIKI INDEX:
-${existingPages.map(p => `- ${p.slug}: ${p.title} — ${p.summary}`).join('\n')}
+EXISTING WIKI INDEX (use these slugs for [[wikilinks]] to related pages — do NOT invent new pages for entities already here):
+${existingPages.map(p => `- ${p.slug}: ${p.title}`).join('\n')}
 
 Rules you MUST follow:
-1. ONLY include claims that are EXPLICITLY stated in the source text above
-2. NEVER infer connections that aren't directly stated
-3. Every factual sentence in content must correspond to something in the source
-4. If something is uncertain, write "According to this source..." not as fact
-5. Do NOT include information you know from training — only from the source text
-6. Create 2-5 wiki pages about key concepts from this specific source
-7. Use [[wikilinks]] to link to related pages by their slug
+1. Create EXACTLY ${MAX_PAGES} wiki page${MAX_PAGES === 1 ? '' : 's'} covering the MAIN subject of the source as a single comprehensive article.
+2. Do NOT split the source into many small pages. Cover everything about the main subject in ONE page with markdown sections (## Headings).
+3. ONLY include claims EXPLICITLY stated in the source text above.
+4. Every factual sentence must correspond to something in the source.
+5. Do NOT include information you know from training — only from the source text.
+6. Use [[wikilinks]] like [[existing-slug]] to link to entities already in the EXISTING WIKI INDEX. Do NOT create new pages for those entities.
+7. Content should be 400-1200 words with proper markdown structure (## sections, paragraphs, lists where appropriate).
 
 Return JSON with a "pages" key containing an array. Each page must include:
 - slug: lowercase-hyphenated
@@ -120,12 +99,6 @@ Return JSON with a "pages" key containing an array. Each page must include:
   // Step 3 — Verify and Store each page in HydraDB as Knowledge
   for (const page of result.object.pages) {
     try {
-      const isVerified = await verifyClaims(page, sourceText)
-      if (!isVerified) {
-        console.warn(`Skipping page ${page.slug} — claims could not be verified against source`)
-        continue
-      }
-
       // Dedup: redirect to canonical slug if a near-duplicate already exists
       const duplicateSlug = findDuplicateSlug(
         { slug: page.slug, title: page.title },
@@ -145,13 +118,33 @@ Return JSON with a "pages" key containing an array. Each page must include:
       const existingPage = await findExistingPage(page.slug, tenantId)
       if (existingPage) {
         console.log(`[ingest] Absorbing into existing page: ${page.slug}`)
-        // Pass all known slugs so AI only creates links to real graph nodes (Fix 3)
         const allKnownSlugs = existingPages.map(p => p.slug)
-        const merged = await absorbIntoExisting(existingPage, page, sourceText, allKnownSlugs)
-        finalContent = merged.content
-        finalSummary = merged.summary
-        finalSourceSentences = merged.sourceSentences
+        try {
+          const merged = await absorbIntoExisting(existingPage, page, sourceText, allKnownSlugs)
+          const cleanMerged = (merged.content || '').replace(/^#\s+.+\n+/, '').trim()
+          if (cleanMerged.length >= 50) {
+            finalContent = merged.content
+            finalSummary = merged.summary
+            finalSourceSentences = merged.sourceSentences
+          } else {
+            console.warn(`[ingest] absorb for ${page.slug} returned empty; keeping existing`)
+            finalContent = existingPage.content
+            finalSummary = existingPage.summary
+            finalSourceSentences = existingPage.sourceSentences
+          }
+        } catch (err) {
+          console.warn(`[ingest] absorb failed for ${page.slug}; keeping existing`, (err as Error).message)
+          finalContent = existingPage.content
+          finalSummary = existingPage.summary
+          finalSourceSentences = existingPage.sourceSentences
+        }
         isNew = false
+      }
+
+      // Guard against empty new pages (model failure)
+      if (!finalContent || finalContent.trim().length < 50) {
+        console.warn(`[ingest] skipping ${page.slug} — content too short (${finalContent?.length ?? 0} chars)`)
+        continue
       }
 
       // All existing pages + siblings already uploaded this batch
@@ -225,35 +218,8 @@ Return JSON with a "pages" key containing an array. Each page must include:
     }
   }
 
-  // Step 4 — Enrich related existing pages with new source knowledge
-  // Limit to 2 related pages max to avoid rate limits
-  const newSlugs = new Set(pages.map(p => p.slug))
-  const enriched = new Set<string>()
-
-  try {
-    for (const newPage of pages.slice(0, 2)) {
-      const related = await hydra.recall.fullRecall({
-        tenant_id: tenantId,
-        query: newPage.title,
-        max_results: 4,
-      }) as any
-
-      const relatedSlugs: string[] = (related?.sources ?? [])
-        .map((s: any) => s.id)
-        .filter((id: string) => !newSlugs.has(id) && !enriched.has(id))
-        .slice(0, 2)
-
-      const newPagesSummary = pages.map(p => `${p.title}: ${p.content.slice(0, 200)}`).join('\n\n')
-      const allSlugs = existingPages.map(p => p.slug)
-
-      for (const relatedSlug of relatedSlugs) {
-        const ok = await enrichRelatedPage(relatedSlug, sourceText, newPagesSummary, allSlugs, tenantId)
-        if (ok) enriched.add(relatedSlug)
-      }
-    }
-  } catch (e) {
-    console.warn('[ingest] Related page enrichment pass failed:', e)
-  }
+  // TODO: enrichment pass (cross-link/update related pages w/ new source).
+  // Removed for now — was gated off by default + had no backlinks/health updates.
 
   return { pagesCreated, pages }
 }
