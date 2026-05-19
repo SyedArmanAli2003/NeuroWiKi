@@ -1,7 +1,8 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
-import { Loader2, Zap } from 'lucide-react'
+import { toast } from 'sonner'
+import { Loader2, Wrench, Zap } from 'lucide-react'
 import { WordsPullUp } from '@/components/animations/WordsPullUp'
 import { FadeUp } from '@/components/animations/FadeUp'
 
@@ -22,9 +23,10 @@ export default function AuditPage() {
     stalePages: number
     flaggedPages: number
     healthScore: number
-    syncWarning: string | null
     stale: Array<{ slug: string; title: string; last_validated: string }>
     flagged: Array<{ slug: string; title: string; stale_reason: string; confidence: number }>
+    missingPages: string[]
+    missingCount: number
   } | null>(null)
 
   const [lint, setLint] = useState<LintReport | null>(null)
@@ -32,9 +34,40 @@ export default function AuditPage() {
   const [lintError, setLintError] = useState<string | null>(null)
   const [fixingIsland, setFixingIsland] = useState<number | null>(null)
   const [fixResults, setFixResults] = useState<Record<number, { connected: number; total: number }>>({})
+  const [repairing, setRepairing] = useState(false)
+  const [repairResult, setRepairResult] = useState<{ repaired: number; total: number } | null>(null)
+  const [repairError, setRepairError] = useState<string | null>(null)
+  const [driftLoading, setDriftLoading] = useState(true)
+  const [syncWarning, setSyncWarning] = useState<string | null>(null)
+  const statsRef = useRef<HTMLDivElement>(null)
+
+  const runRepair = async () => {
+    setRepairing(true)
+    setRepairResult(null)
+    setRepairError(null)
+    try {
+      const res = await fetch('/api/repair', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setRepairResult({ repaired: data.repaired, total: data.total })
+      setTimeout(() => statsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+      // Refresh stats and re-check drift
+      fetch('/api/audit?skipDrift=1').then(r => r.json()).then(setAudit)
+      setDriftLoading(true)
+      fetch('/api/audit').then(r => r.json()).then(d => {
+        setSyncWarning(d.syncWarning)
+        setDriftLoading(false)
+      }).catch(() => setDriftLoading(false))
+    } catch (e: any) {
+      setRepairError(e.message)
+    } finally {
+      setRepairing(false)
+    }
+  }
 
   const fixIsland = async (index: number, slugs: string[]) => {
     setFixingIsland(index)
+    toast.loading('Fixing isolated island...', { id: 'fixIsland' })
     try {
       const res = await fetch('/api/fix-islands', {
         method: 'POST',
@@ -44,7 +77,9 @@ export default function AuditPage() {
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setFixResults(prev => ({ ...prev, [index]: { connected: data.connected, total: data.total } }))
+      toast.success(`Connected ${data.connected} pages to the main graph`, { id: 'fixIsland' })
     } catch (e: any) {
+      toast.error(`Fix failed: ${e.message}`, { id: 'fixIsland' })
       setLintError(`Fix failed: ${e.message}`)
     } finally {
       setFixingIsland(null)
@@ -52,18 +87,29 @@ export default function AuditPage() {
   }
 
   useEffect(() => {
-    fetch('/api/audit').then(r => r.json()).then(setAudit)
+    // SQLite stats — instant
+    fetch('/api/audit?skipDrift=1').then(r => r.json()).then(setAudit)
+    // Drift check — async, updates warning banner independently
+    fetch('/api/audit').then(r => r.json()).then(data => {
+      setSyncWarning(data.syncWarning)
+      // Also update totalPages / healthScore if drift was detected
+      if (data.syncWarning) setAudit(prev => prev ? { ...prev, totalPages: data.totalPages, healthScore: data.healthScore } : prev)
+      setDriftLoading(false)
+    }).catch(() => setDriftLoading(false))
   }, [])
 
   const runLint = async () => {
     setLintLoading(true)
     setLintError(null)
+    toast.loading('Running deep lint sweep...', { id: 'lint' })
     try {
       const res = await fetch('/api/lint')
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setLint(data)
+      toast.success('Lint sweep complete', { id: 'lint' })
     } catch (e: any) {
+      toast.error(`Lint failed: ${e.message}`, { id: 'lint' })
       setLintError(e.message)
     } finally {
       setLintLoading(false)
@@ -84,17 +130,40 @@ export default function AuditPage() {
 
       {audit && (
         <>
-          {audit.syncWarning && (
-            <FadeUp delay={0.35}>
+          <FadeUp delay={0.35}>
+            {driftLoading ? (
+              <div className="mb-8 flex items-center gap-2">
+                <Loader2 size={11} className="animate-spin" style={{ color: 'rgba(222,219,200,0.3)' }} />
+                <p className="text-[10px]" style={{ color: 'rgba(222,219,200,0.3)' }}>Checking sync status...</p>
+              </div>
+            ) : syncWarning ? (
               <div className="mb-8 bg-amber-950/30 border border-amber-900/50 rounded-xl p-4 flex items-start gap-3">
                 <span className="text-amber-500 text-sm mt-0.5">⚠️</span>
-                <p className="text-xs text-amber-200/80 leading-relaxed">{audit.syncWarning}</p>
+                <div className="flex-1">
+                  <p className="text-xs text-amber-200/80 leading-relaxed">{syncWarning}</p>
+                  {repairResult && (
+                    <p className="text-xs text-emerald-400 mt-1">Repaired {repairResult.repaired} of {repairResult.total} pages.</p>
+                  )}
+                  {repairError && (
+                    <p className="text-xs text-red-400 mt-1">{repairError}</p>
+                  )}
+                </div>
+                <button
+                  onClick={runRepair}
+                  disabled={repairing}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-amber-500/40 text-amber-400 text-xs hover:bg-amber-500/10 transition disabled:opacity-50 shrink-0"
+                >
+                  {repairing
+                    ? <><Loader2 size={10} className="animate-spin" /> Repairing...</>
+                    : <><Wrench size={10} /> Repair now</>
+                  }
+                </button>
               </div>
-            </FadeUp>
-          )}
+            ) : null}
+          </FadeUp>
 
           {/* Health score */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-12">
+          <div ref={statsRef} className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-12">
             {[
               { label: 'Total Pages', value: audit.totalPages },
               { label: 'Health Score', value: `${audit.healthScore}%` },
@@ -163,6 +232,37 @@ export default function AuditPage() {
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Missing pages */}
+          {audit.missingCount > 0 && (
+            <FadeUp>
+              <div className="mb-12">
+                <p className="text-[9px] tracking-[0.3em] uppercase mb-4"
+                  style={{ color: 'rgba(222,219,200,0.3)' }}>
+                  MISSING PAGES — {audit.missingCount} stubs
+                </p>
+                <p className="text-[11px] mb-4" style={{ color: 'rgba(222,219,200,0.4)' }}>
+                  These [[wikilinks]] exist in your wiki but have no page yet.
+                  Add sources about these topics to fill them in.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {audit.missingPages.map((slug: string) => (
+                    <div key={slug}
+                      className="flex items-center gap-2 bg-[#111] rounded-full px-3 py-1.5">
+                      <span className="text-[10px]" style={{ color: 'rgba(222,219,200,0.5)' }}>
+                        {slug.replace(/-/g, ' ')}
+                      </span>
+                      <Link href={`/ingest?prefill=${encodeURIComponent(slug.replace(/-/g, ' '))}`}
+                        className="text-[9px] hover:opacity-100 transition-opacity"
+                        style={{ color: 'rgba(222,219,200,0.3)' }}>
+                        + Add →
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </FadeUp>
           )}
         </>
       )}

@@ -10,8 +10,10 @@
 
 import Database from 'better-sqlite3'
 import path from 'path'
+import fs from 'fs'
 
-const DB_PATH = path.join(process.cwd(), 'data', 'wiki.db')
+const DATA_DIR = path.join(process.cwd(), 'data')
+const DB_PATH = path.join(DATA_DIR, 'wiki.db')
 
 // ---------------------------------------------------------------------------
 // Singleton plumbing
@@ -23,6 +25,8 @@ declare global {
 }
 
 function openDatabase(): Database.Database {
+  // Ensure the data directory exists (may be missing in fresh deploys or after git clean)
+  fs.mkdirSync(DATA_DIR, { recursive: true })
   const db = new Database(DB_PATH)
 
   // WAL mode for better concurrent read performance
@@ -39,6 +43,14 @@ function migrateColumns(db: Database.Database): void {
   const names = new Set(cols.map((c) => c.name))
   if (!names.has('summary')) db.exec(`ALTER TABLE pages ADD COLUMN summary TEXT`)
   if (!names.has('source_id')) db.exec(`ALTER TABLE pages ADD COLUMN source_id INTEGER`)
+
+  // Table-level migrations — idempotent, safe to run on every module evaluation
+  db.exec(`CREATE TABLE IF NOT EXISTS reindex_queue (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    hydra_id   TEXT NOT NULL UNIQUE,
+    attempts   INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`)
 }
 
 function createTables(db: Database.Database): void {
@@ -99,6 +111,13 @@ function createTables(db: Database.Database): void {
       PRIMARY KEY (source_slug, target_slug)
     );
 
+    -- Old slug -> new slug redirects so renamed pages stay reachable
+    CREATE TABLE IF NOT EXISTS slug_aliases (
+      old_slug TEXT PRIMARY KEY,
+      new_slug TEXT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Lint sweep audit trail — tracks last run time for incremental analysis
     CREATE TABLE IF NOT EXISTS lint_sweeps (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,9 +125,20 @@ function createTables(db: Database.Database): void {
       pages_analyzed  INTEGER NOT NULL DEFAULT 0,
       issues_found    INTEGER NOT NULL DEFAULT 0
     );
+
+    -- Pages that failed SQLite indexing after HydraDB write; backfilled by processReindexQueue
+    CREATE TABLE IF NOT EXISTS reindex_queue (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      hydra_id   TEXT NOT NULL UNIQUE,
+      attempts   INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
   `)
 }
 
 // Reuse existing instance across hot-reloads in development
 export const db: Database.Database =
   globalThis.__db ?? (globalThis.__db = openDatabase())
+
+// Re-run migrations on every module evaluation so hot-reload picks up new tables
+migrateColumns(db)

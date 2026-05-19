@@ -111,20 +111,7 @@ export function markSourceProcessed(id: number): void {
   db.prepare<[number]>(`UPDATE sources SET processed = 1 WHERE id = ?`).run(id)
 }
 
-/**
- * Return only unprocessed sources (processed = 0).
- */
-export function getUnprocessedSources(): Source[] {
-  return db
-    .prepare<[], Source>(
-      `SELECT id, url, title, raw_content, processed, created_at
-       FROM sources
-       WHERE processed = 0
-       ORDER BY created_at ASC`
-    )
-    .all()
-}
-
+//removed getUnprocessedSources function since it's not currently used, but can be re-added if needed in the future.
 // ---------------------------------------------------------------------------
 // Logs
 // ---------------------------------------------------------------------------
@@ -162,19 +149,7 @@ export function getAllLogs(): Log[] {
     .all()
 }
 
-/**
- * Return log entries linked to a specific source.
- */
-export function getLogsBySourceId(sourceId: number): Log[] {
-  return db
-    .prepare<[number], Log>(
-      `SELECT id, source_id, pages_created, pages_updated, message, created_at
-       FROM logs
-       WHERE source_id = ?
-       ORDER BY created_at DESC`
-    )
-    .all(sourceId)
-}
+//getLogsBySourceId function removed since it's not currently used, but can be re-added if needed in the future.
 
 // ---------------------------------------------------------------------------
 // Pages (Wiki Health Deprecation Pipeline)
@@ -264,6 +239,38 @@ export function getAllPageLinks(): Array<{ source_slug: string; target_slug: str
 }
 
 // ---------------------------------------------------------------------------
+// Slug rename + aliases
+// ---------------------------------------------------------------------------
+
+export function resolveSlugAlias(slug: string): string | null {
+  const row = db.prepare(`SELECT new_slug FROM slug_aliases WHERE old_slug = ?`).get(slug) as { new_slug: string } | undefined
+  return row?.new_slug ?? null
+}
+
+export function renamePageSlug(oldSlug: string, newSlug: string): void {
+  const tx = db.transaction(() => {
+    db.prepare(`UPDATE pages SET slug = ?, updated_at = CURRENT_TIMESTAMP WHERE slug = ?`).run(newSlug, oldSlug)
+    db.prepare(`UPDATE page_links SET source_slug = ? WHERE source_slug = ?`).run(newSlug, oldSlug)
+    db.prepare(`UPDATE page_links SET target_slug = ? WHERE target_slug = ?`).run(newSlug, oldSlug)
+    db.prepare(`INSERT OR REPLACE INTO slug_aliases (old_slug, new_slug) VALUES (?, ?)`).run(oldSlug, newSlug)
+    // If newSlug was previously an alias, drop it (no self-redirect)
+    db.prepare(`DELETE FROM slug_aliases WHERE old_slug = ?`).run(newSlug)
+    // Re-point any chain: any alias whose new_slug was oldSlug now points to newSlug
+    db.prepare(`UPDATE slug_aliases SET new_slug = ? WHERE new_slug = ?`).run(newSlug, oldSlug)
+  })
+  tx()
+}
+
+export function pageSlugExists(slug: string): boolean {
+  const row = db.prepare(`SELECT 1 FROM pages WHERE slug = ?`).get(slug)
+  return !!row
+}
+
+export function getPageBySlug(slug: string): PageHealth | null {
+  return db.prepare<[string], PageHealth>(`SELECT * FROM pages WHERE slug = ?`).get(slug) ?? null
+}
+
+// ---------------------------------------------------------------------------
 // Lint Sweeps
 // ---------------------------------------------------------------------------
 
@@ -287,14 +294,35 @@ export function getPagesUpdatedSince(since: string): PageHealth[] {
 }
 
 // ---------------------------------------------------------------------------
+// Reindex Queue
+// ---------------------------------------------------------------------------
 
-export function archivePage(slug: string): void {
-  db.prepare<[string]>(`UPDATE pages SET is_stale = 1, confidence = 0, updated_at = CURRENT_TIMESTAMP WHERE slug = ?`).run(slug)
+export function enqueueReindex(hydraId: string): void {
+  db.prepare(`INSERT OR IGNORE INTO reindex_queue (hydra_id) VALUES (?)`).run(hydraId)
 }
 
-export function restorePage(slug: string): void {
-  db.prepare<[string]>(`
-    UPDATE pages SET is_stale = 0, stale_reason = NULL, confidence = 80,
-    last_validated = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE slug = ?
-  `).run(slug)
+export function processReindexQueue(
+  fetchPageMeta: (hydraId: string) => Promise<Parameters<typeof upsertPageHealth>[0] | null>
+): void {
+  const rows = db.prepare<[], { id: number; hydra_id: string; attempts: number }>(
+    `SELECT id, hydra_id, attempts FROM reindex_queue ORDER BY created_at ASC LIMIT 20`
+  ).all()
+
+  for (const row of rows) {
+    ;(async () => {
+      try {
+        const meta = await fetchPageMeta(row.hydra_id)
+        if (meta) {
+          upsertPageHealth(meta)
+          db.prepare(`DELETE FROM reindex_queue WHERE id = ?`).run(row.id)
+        } else {
+          db.prepare(`UPDATE reindex_queue SET attempts = attempts + 1 WHERE id = ?`).run(row.id)
+        }
+      } catch {
+        db.prepare(`UPDATE reindex_queue SET attempts = attempts + 1 WHERE id = ?`).run(row.id)
+      }
+    })()
+  }
 }
+
+//archivePage and restorePage functions removed since they're not currently used, but can be re-added if needed in the future.

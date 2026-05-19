@@ -11,17 +11,17 @@ interface Props {
 
 export function WordsPullUp({ text, className = '', style = {}, delay = 0 }: Props) {
   const ref = useRef(null)
-  const isInView = useInView(ref, { once: true })
+  const isInView = useInView(ref, { once: true, amount: 0.1 })
   const words = text.split(' ')
 
   return (
     <span
       ref={ref}
-      className={`inline-flex flex-wrap ${className}`}
-      style={{ gap: '0.25em', ...style }}
+      className={`inline-block ${className}`}
+      style={style}
     >
       {words.map((word, i) => (
-        <span key={i} style={{ overflow: 'hidden', display: 'inline-block' }}>
+        <span key={i} style={{ overflow: 'hidden', display: 'inline-block', paddingBottom: '0.15em', marginBottom: '-0.15em' }}>
           <motion.span
             initial={{ y: 30, opacity: 0 }}
             animate={isInView ? { y: 0, opacity: 1 } : { y: 30, opacity: 0 }}
@@ -32,7 +32,7 @@ export function WordsPullUp({ text, className = '', style = {}, delay = 0 }: Pro
             }}
             style={{ display: 'inline-block' }}
           >
-            {word}
+            {word}{i < words.length - 1 ? '\u00A0' : ''}
           </motion.span>
         </span>
       ))}

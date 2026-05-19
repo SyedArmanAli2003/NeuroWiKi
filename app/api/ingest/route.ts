@@ -1,13 +1,15 @@
 import { NextRequest } from 'next/server'
-import { Readability } from '@mozilla/readability'
-import { JSDOM } from 'jsdom'
+import { extract } from '@extractus/article-extractor'
 import pdfParse from 'pdf-parse'
 import mammoth from 'mammoth'
-import { createSource, createLog } from '@/lib/db-helpers'
+import { createSource, createLog, processReindexQueue } from '@/lib/db-helpers'
 import { runIngestAgent } from '@/lib/agents/ingest-agent'
 import { runConsistencyCheck } from '@/lib/agents/consistency-agent'
 import { hydra } from '@/lib/hydra'
 
+// ---------------------------------------------------------------------------
+// File parser — supports PDF, DOCX, TXT, MD
+// ---------------------------------------------------------------------------
 async function parseFile(file: File): Promise<{ text: string; title: string }> {
   const buffer = Buffer.from(await file.arrayBuffer())
   const mime = file.type
@@ -19,7 +21,10 @@ async function parseFile(file: File): Promise<{ text: string; title: string }> {
     return { text: data.text, title: (data.info?.Title as string) || name.replace(/\.pdf$/i, '') }
   }
 
-  if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || name.endsWith('.docx')) {
+  if (
+    mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    name.endsWith('.docx')
+  ) {
     const result = await mammoth.extractRawText({ buffer })
     return { text: result.value, title: name.replace(/\.docx$/i, '') }
   }
@@ -31,7 +36,61 @@ async function parseFile(file: File): Promise<{ text: string; title: string }> {
   throw new Error(`Unsupported file type: ${name}`)
 }
 
+// ---------------------------------------------------------------------------
+// URL scraper — tries article-extractor first, falls back to raw fetch
+// ---------------------------------------------------------------------------
+async function scrapeUrl(url: string): Promise<{ title: string; text: string }> {
+  // Method 1: article-extractor (handles most news/blog/wiki sites)
+  try {
+    const article = await extract(url, {}, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; NeuroWiki/1.0)',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    })
+    if (article?.content && article.content.length > 200) {
+      const text = article.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+      return { title: article.title || url, text }
+    }
+  } catch (e) {
+    console.warn('article-extractor failed, trying raw fetch:', e)
+  }
+
+  // Method 2: raw fetch + basic HTML strip
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (compatible; NeuroWiki/1.0)',
+      'Accept': 'text/html',
+    },
+    signal: AbortSignal.timeout(15000),
+  })
+  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.statusText}`)
+  const html = await res.text()
+
+  const cleaned = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+  const title = titleMatch ? titleMatch[1].trim() : url
+
+  if (cleaned.length < 100) throw new Error(`Page content too short after scraping: ${url}`)
+  return { title, text: cleaned.slice(0, 8000) }
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/ingest — supports text, url/urls (array), and file uploads
+// ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    return Response.json({ error: 'API key not configured' }, { status: 500 })
+  }
   const encoder = new TextEncoder()
   const contentType = req.headers.get('content-type') ?? ''
   let body: any = {}
@@ -48,21 +107,21 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const send = (msg: string) => controller.enqueue(encoder.encode(msg + '\n'))
 
+      // Best-effort: drain reindex queue from previous failed ingest runs
+      processReindexQueue(async () => null)
+
       try {
         const { text, url } = body
         let allPages: any[] = []
         let totalCreated = 0
         let hasIndexingWarning = false
 
+        // ── Branch 1: File uploads ──────────────────────────────────────────
         if (uploadedFiles.length > 0) {
           send(`Reading ${uploadedFiles.length} file${uploadedFiles.length > 1 ? 's' : ''}...`)
-
-          // Parse all files first (sequential — cheap)
           const parsed = await Promise.all(uploadedFiles.map(parseFile))
-
           send(`AI is analyzing ${uploadedFiles.length} document${uploadedFiles.length > 1 ? 's' : ''} in parallel...`)
 
-          // Ingest sequentially to avoid rate limits
           for (let i = 0; i < parsed.length; i++) {
             const { text: fileText, title } = parsed[i]
             send(`Processing file ${i + 1} of ${parsed.length}: ${title}...`)
@@ -75,39 +134,37 @@ export async function POST(req: NextRequest) {
             if (result.pages.some((p: any) => !p.indexed)) hasIndexingWarning = true
           }
 
+        // ── Branch 2: URLs ──────────────────────────────────────────────────
         } else {
           const { urls } = body
           const urlList: string[] = urls?.length ? urls : url ? [url] : []
 
           if (urlList.length > 0) {
             send(`Fetching ${urlList.length} URL${urlList.length > 1 ? 's' : ''}...`)
-
             const urlErrors: string[] = []
 
             for (let i = 0; i < urlList.length; i++) {
               const u = urlList[i]
               send(`Processing source ${i + 1} of ${urlList.length}...`)
               try {
-                const response = await fetch(u)
+                const response = await fetch(u, { signal: AbortSignal.timeout(15000) })
                 if (!response.ok) throw new Error(`Failed to fetch ${u}: ${response.statusText}`)
                 const respContentType = response.headers.get('content-type') ?? ''
                 let sourceText = ''
                 let sourceTitle = ''
 
                 if (respContentType.includes('application/pdf')) {
+                  // Direct PDF URL
                   const buffer = await response.arrayBuffer()
                   const data = await pdfParse(Buffer.from(buffer))
                   sourceText = data.text
                   sourceTitle = (data.info?.Title as string) || new URL(u).pathname.split('/').pop() || 'PDF Document'
                   if (!sourceText.trim()) throw new Error(`PDF at ${u} has no extractable text.`)
                 } else {
-                  const html = await response.text()
-                  const doc = new JSDOM(html, { url: u })
-                  const reader = new Readability(doc.window.document)
-                  const article = reader.parse()
-                  if (!article) throw new Error(`Could not parse page at ${u}`)
-                  sourceText = article.textContent || ''
-                  sourceTitle = article.title || new URL(u).hostname
+                  // HTML page — use article-extractor with raw fetch fallback
+                  const scraped = await scrapeUrl(u)
+                  sourceText = scraped.text
+                  sourceTitle = scraped.title
                 }
 
                 const source = createSource({ url: u, title: sourceTitle, raw_content: sourceText, processed: 0 })
@@ -126,13 +183,14 @@ export async function POST(req: NextRequest) {
             }
             if (urlErrors.length > 0) hasIndexingWarning = true
 
+          // ── Branch 3: Plain text ──────────────────────────────────────────
           } else if (text) {
             if (!text.trim()) throw new Error('Source text is empty')
-            send("Saving source to local database...")
+            send('Saving source to local database...')
             const source = createSource({ url: null, title: 'Manual Text Entry', raw_content: text, processed: 0 })
-            send("AI is analyzing content...")
+            send('AI is analyzing content...')
             const result = await runIngestAgent(text, source.id)
-            send("Storing logs...")
+            send('Storing logs...')
             createLog({ source_id: source.id, pages_created: result.pagesCreated, pages_updated: 0, message: `Successfully created ${result.pagesCreated} pages.` })
             allPages = result.pages
             totalCreated = result.pagesCreated
@@ -142,14 +200,15 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        send("Checking consistency...")
+        // ── Consistency check ───────────────────────────────────────────────
+        send('Checking consistency...')
         let allExistingSlugs: string[] = []
         try {
           const res = (await hydra.fetch.listData({ tenant_id: 'default', kind: 'knowledge', page: 1, page_size: 100 })) as any
           const items: any[] = res?.sources ?? []
           allExistingSlugs = items.map((item: any) => (item.document_metadata?.slug as string) || item.id)
         } catch (e) {
-          console.warn("Failed to fetch slugs for consistency check", e)
+          console.warn('Failed to fetch slugs for consistency check', e)
         }
 
         const newSlugs = allPages.map((p: any) => p.slug)
@@ -170,10 +229,13 @@ export async function POST(req: NextRequest) {
         controller.close()
       } catch (error: any) {
         console.error('[ingest] Error:', error?.stack ?? error)
-        send(JSON.stringify({ error: error.message || 'Unknown error occurred' }))
+        const msg: string = error.message || 'Unknown error occurred'
+        const retryMatch = msg.match(/retry(?:\s+after|:?)\s*(\d+)\s*second/i)
+        const retryAfter = retryMatch ? parseInt(retryMatch[1], 10) : undefined
+        send(JSON.stringify({ error: msg, ...(retryAfter !== undefined && { retryAfter }) }))
         controller.close()
       }
-    }
+    },
   })
 
   return new Response(stream, {

@@ -1,16 +1,40 @@
 import { NextRequest } from 'next/server'
-import { getStalePages, getFlaggedPages, getAllPages } from '@/lib/db-helpers'
+import { getStalePages, getFlaggedPages, getAllPages, getAllPageLinks, upsertPageHealth } from '@/lib/db-helpers'
 import { hydra } from '@/lib/hydra'
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const staleDays = parseInt(url.searchParams.get('staleDays') || '30', 10)
+  const skipDrift = url.searchParams.get('skipDrift') === '1'
 
   const stale = getStalePages(staleDays)
   const flagged = getFlaggedPages()
   const all = getAllPages()
-  
-  // Missing sync recovery reconciliation check
+
+  const pageSlugSet = new Set(all.map(p => p.slug))
+  const missingPages = [...new Set(
+    getAllPageLinks()
+      .map(l => l.target_slug.toLowerCase().replace(/\s+/g, '-'))
+      .filter(slug => !pageSlugSet.has(slug))
+  )]
+
+  const base = {
+    totalPages: all.length,
+    stalePages: stale.length,
+    flaggedPages: flagged.length,
+    healthScore: Math.round(((all.length - stale.length - flagged.length) / Math.max(all.length, 1)) * 100),
+    stale: stale.map(p => ({ slug: p.slug, title: p.title, last_validated: p.last_validated })),
+    flagged: flagged.map(p => ({ slug: p.slug, title: p.title, stale_reason: p.stale_reason, confidence: p.confidence })),
+    missingPages: missingPages.slice(0, 20),
+    missingCount: missingPages.length,
+  }
+
+  // Return SQLite-only stats immediately when skipDrift=1
+  if (skipDrift) {
+    return Response.json({ ...base, syncWarning: null })
+  }
+
+  // Full drift check against HydraDB
   let hydraCount = 0
   let syncWarning = null
   try {
@@ -20,9 +44,8 @@ export async function GET(req: NextRequest) {
       page: 1,
       page_size: 100,
     }) as any
-    const items = res?.sources ?? []
-    hydraCount = items.length
-    
+    hydraCount = (res?.sources ?? []).length
+
     if (hydraCount > all.length) {
       syncWarning = `Database drift detected: HydraDB contains ${hydraCount} pages but local SQLite index only has ${all.length}. Ingestion may have crashed before indexing finished.`
     } else if (hydraCount < all.length) {
@@ -32,14 +55,63 @@ export async function GET(req: NextRequest) {
     const is404 = e?.statusCode === 404 || e?.body?.detail?.error_code === 'NOT_FOUND'
     if (!is404) console.error('Failed to reconcile with HydraDB', e)
   }
-  
+
+  const displayTotal = hydraCount > all.length ? hydraCount : all.length
+
   return Response.json({
-    totalPages: all.length,
-    stalePages: stale.length,
-    flaggedPages: flagged.length,
-    healthScore: Math.round(((all.length - stale.length - flagged.length) / Math.max(all.length, 1)) * 100),
+    ...base,
+    totalPages: displayTotal,
+    healthScore: Math.round(((displayTotal - stale.length - flagged.length) / Math.max(displayTotal, 1)) * 100),
     syncWarning,
-    stale: stale.map(p => ({ slug: p.slug, title: p.title, last_validated: p.last_validated })),
-    flagged: flagged.map(p => ({ slug: p.slug, title: p.title, stale_reason: p.stale_reason, confidence: p.confidence })),
   })
+}
+
+// POST /api/audit — reconcile SQLite from HydraDB (backfill pages missing due to crash)
+export async function POST() {
+  try {
+    const items: any[] = []
+    let page = 1
+    while (true) {
+      const res = await hydra.fetch.listData({
+        tenant_id: 'default',
+        kind: 'knowledge',
+        page,
+        page_size: 100,
+      }) as any
+      const batch: any[] = res?.sources ?? []
+      items.push(...batch)
+      if (batch.length < 100) break
+      page++
+    }
+
+    const existing = new Set(getAllPages().map(p => p.slug))
+    let backfilled = 0
+    const skipped: string[] = []
+
+    for (const item of items) {
+      const slug: string = (item.document_metadata?.slug as string) || item.id
+      if (!slug || existing.has(slug)) continue
+
+      const title: string = item.title || slug
+      const type: string = item.document_metadata?.category || 'concept'
+      const summary: string = item.document_metadata?.summary || ''
+      const hydraDocId: string = item.id || slug
+
+      upsertPageHealth({
+        slug,
+        title,
+        type,
+        summary,
+        hydra_doc_id: hydraDocId,
+        confidence: 80,
+        stale_reason: 'Backfilled from HydraDB after index drift',
+      })
+      backfilled++
+      skipped.push(slug)
+    }
+
+    return Response.json({ backfilled, total: items.length, slugs: skipped })
+  } catch (e: any) {
+    return Response.json({ error: e.message }, { status: 500 })
+  }
 }
