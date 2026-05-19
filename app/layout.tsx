@@ -7,6 +7,7 @@ import { Topbar } from '@/components/layout/Topbar'
 import { PageNav } from '@/components/layout/PageNav'
 import { PageTransition } from '@/components/PageTransition'
 import { Footer } from '@/components/Footer'
+import { SessionProvider } from '@/components/providers/SessionProvider'
 
 export const metadata: Metadata = {
   title: 'NeuroWiki',
@@ -17,19 +18,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="bg-black text-white antialiased">
-        <HoverSidebar />
-        <Topbar />
-        <BackButton />
-        <PageNav />
-        <main className="min-h-screen flex flex-col">
-          <PageTransition>
-            <div className="flex-1">
-              {children}
-            </div>
-          </PageTransition>
-          <Footer />
-        </main>
-        <Toaster
+        <SessionProvider>
+          <HoverSidebar />
+          <Topbar />
+          <BackButton />
+          <PageNav />
+          <main className="min-h-screen flex flex-col">
+            <PageTransition>
+              <div className="flex-1">
+                {children}
+              </div>
+            </PageTransition>
+            <Footer />
+          </main>
+          <Toaster
           position="bottom-right"
           toastOptions={{
             style: {
@@ -41,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             },
           }}
         />
+        </SessionProvider>
       </body>
     </html>
   )
