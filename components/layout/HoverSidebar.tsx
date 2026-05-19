@@ -5,7 +5,7 @@ import { motion, AnimatePresence, useAnimation } from 'framer-motion'
 import {
   Brain, BookOpen, Plus, Search,
   Network, ShieldCheck, User, X,
-  Github, LogIn, ChevronRight, Database, Info
+  GitBranch, LogIn, ChevronRight, Database, Info
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 
@@ -441,7 +441,7 @@ export function HoverSidebar() {
                     className="inline-flex items-center gap-2 text-[10px] hover:opacity-100 transition-opacity"
                     style={{ color: 'rgba(222,219,200,0.4)' }}
                   >
-                    <Github size={11} />
+                    <GitBranch size={11} />
                     GitHub
                   </a>
                 </div>
