@@ -67,6 +67,12 @@ export function getTodayEntries(date: string): DiaryEntry[] {
   return db.prepare(`SELECT * FROM diary_entries WHERE date = ? ORDER BY created_at ASC`).all(date) as DiaryEntry[]
 }
 
+export function getEntriesInRange(from: string, to: string): DiaryEntry[] {
+  return db.prepare(
+    `SELECT * FROM diary_entries WHERE date >= ? AND date <= ? ORDER BY date DESC, created_at DESC`
+  ).all(from, to) as DiaryEntry[]
+}
+
 export function insertEntry(entry: Omit<DiaryEntry, 'id' | 'created_at'>): DiaryEntry {
   const info = db.prepare(`
     INSERT INTO diary_entries (date, time, kind, title, text, filed_under)

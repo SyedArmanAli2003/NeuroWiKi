@@ -1,12 +1,9 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { KindChip, type EntryKind } from './KindChip'
 import { WikilinkMenu, type WikiPage } from './WikilinkMenu'
 import { useWikiPages } from '@/lib/use-wiki-pages'
 import { useWikilinkTrigger } from '@/lib/use-wikilink-trigger'
-
-const KINDS: EntryKind[] = ['thought', 'link', 'note', 'decision', 'question']
 
 interface TodayComposerProps {
   date: string
@@ -14,7 +11,7 @@ interface TodayComposerProps {
 }
 
 export function TodayComposer({ date, onEntry }: TodayComposerProps) {
-  const [kind, setKind] = useState<EntryKind>('thought')
+  const kind = 'thought'
   const [title, setTitle] = useState('')
   const [text, setText] = useState('')
   const [filedUnder, setFiledUnder] = useState<{ slug: string; title: string } | null>(null)
@@ -136,7 +133,7 @@ export function TodayComposer({ date, onEntry }: TodayComposerProps) {
               }}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
-              placeholder="Title (optional) — makes this linkable as [[Title]]"
+              placeholder="Title (optional)"
               className="bg-transparent outline-none w-full"
               style={{
                 fontSize: 'var(--fs-title)',
@@ -189,21 +186,6 @@ export function TodayComposer({ date, onEntry }: TodayComposerProps) {
               </motion.div>
             )}
           </div>
-        </div>
-
-        <div
-          className="flex items-center justify-between px-5 py-3 flex-wrap gap-3"
-          style={{ borderTop: '1px solid var(--hair)' }}
-        >
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {KINDS.map((k) => (
-              <KindChip key={k} kind={k} active={kind === k} onClick={() => setKind(k)} />
-            ))}
-          </div>
-          <span style={{ fontSize: 'var(--fs-kicker)', letterSpacing: '0.06em', color: 'var(--ink-mute)', whiteSpace: 'nowrap' }}>
-            <kbd style={{ fontSize: 'var(--fs-micro)', padding: '2px 6px', border: '1px solid var(--hair)', borderRadius: '4px', marginRight: '4px' }}>↵</kbd>
-            save · <kbd style={{ fontSize: 'var(--fs-micro)', padding: '2px 6px', border: '1px solid var(--hair)', borderRadius: '4px', margin: '0 2px' }}>[[</kbd> link
-          </span>
         </div>
       </div>
 
