@@ -8,8 +8,6 @@ import {
   Github, LogIn, ChevronRight, Database, Info
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
-import { signOut } from 'next-auth/react'
-import { useSafeSession } from '@/lib/hooks/useSafeSession'
 
 const NAV_ITEMS = [
   { label: 'Home',            href: '/',        icon: Brain       },
@@ -27,7 +25,6 @@ const HINT_SEEN_KEY  = 'nav_hint_seen'
 
 export function HoverSidebar() {
   const pathname                        = usePathname()
-  const { data: session }               = useSafeSession()
   const [panelOpen,    setPanelOpen]    = useState(false)
   const [showAbout,    setShowAbout]    = useState(false)
   const [sliverHover,  setSliverHover]  = useState(false)
@@ -91,11 +88,11 @@ export function HoverSidebar() {
   }, [hasOpened])
 
   const closePanel = useCallback(() => {
-    // Delay close by 400ms so accidental mouse-outs don't snap it shut
+    // Delay close by 250ms so accidental mouse-outs don't snap it shut
     closeTimer.current = setTimeout(() => {
       setPanelOpen(false)
       setShowAbout(false)
-    }, 400)
+    }, 250)
   }, [])
 
   const cancelClose = useCallback(() => {
@@ -146,17 +143,19 @@ export function HoverSidebar() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="fixed left-0 top-0 h-full z-50 flex items-center"
-            style={{ width: sliverHover ? 12 : 4 }}
+            style={{ width: 20 }}
             onMouseEnter={() => { setSliverHover(true); openPanel() }}
             onMouseLeave={() => setSliverHover(false)}
           >
             {/* Sliver bar */}
             <motion.div
-              className="absolute left-0 top-0 h-full origin-left rounded-r-sm"
+              className="absolute left-0 top-0 h-full origin-left"
               style={{
-                width: sliverHover ? 12 : 4,
-                background: 'rgba(222,219,200,0.18)',
+                width: sliverHover ? 14 : 6,
+                background: 'rgba(222,219,200,0.28)',
+                boxShadow: '2px 0 8px rgba(222,219,200,0.12)',
                 transition: 'width 80ms ease-out',
+                borderRadius: '0 3px 3px 0',
               }}
               animate={pulseAnimation}
               transition={pulseTransition}
@@ -185,7 +184,7 @@ export function HoverSidebar() {
             {/* Chevron — always visible centered */}
             <motion.div
               className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center"
-              style={{ width: sliverHover ? 12 : 4 }}
+              style={{ width: sliverHover ? 14 : 6 }}
               animate={{ x: sliverHover ? 1 : 0 }}
               transition={{ duration: 0.08 }}
             >
@@ -268,7 +267,7 @@ export function HoverSidebar() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-40"
-            style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(2px)' }}
+            style={{ background: 'rgba(0,0,0,0.4)' }}
             onClick={() => { setPanelOpen(false); setShowAbout(false) }}
           />
         )}
@@ -278,18 +277,15 @@ export function HoverSidebar() {
       <AnimatePresence>
         {panelOpen && (
           <motion.div
+            data-sidebar-panel
             initial={{ x: -280 }}
-            animate={{ x: 0 }}
-            exit={{ x: -280 }}
-            transition={{
-              duration: 0.25,
-              ease: [0.0, 0.0, 0.2, 1.0], // ease-out cubic — spring-like feel
-            }}
+            animate={{ x: 0, transition: { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 } }}
+            exit={{ x: -280, transition: { duration: 0.18, ease: [0.4, 0, 1, 1] } }}
             className="fixed left-0 top-0 h-full w-64 z-50 flex flex-col"
             style={{
-              background: 'rgba(8,8,8,0.98)',
-              backdropFilter: 'blur(20px)',
-              borderRight: '1px solid rgba(255,255,255,0.06)',
+              background: '#0a0a0a',
+              borderRight: '1px solid rgba(255,255,255,0.08)',
+              willChange: 'transform',
             }}
             onMouseEnter={cancelClose}
             onMouseLeave={closePanel}
@@ -366,38 +362,23 @@ export function HoverSidebar() {
                   About this project
                 </button>
 
-                {/* Auth */}
+                {/* Auth - Hardcoded Sign In for now */}
                 <div className="mx-5 my-3 border-t border-white/5" />
-                {session ? (
-                  <div className="px-5 py-2">
-                    <p className="text-[10px] mb-1.5" style={{ color: 'rgba(222,219,200,0.35)' }}>
-                      {session.user?.name || session.user?.email}
-                    </p>
-                    <button
-                      onClick={() => signOut()}
-                      className="text-[10px] tracking-wider uppercase hover:opacity-100 transition-opacity"
-                      style={{ color: 'rgba(222,219,200,0.25)' }}
-                    >
-                      Sign out
-                    </button>
-                  </div>
-                ) : (
-                  <Link
-                    href="/auth/signin"
-                    onClick={() => setPanelOpen(false)}
-                    className="flex items-center gap-3 px-5 py-2.5 text-[11px] tracking-wider uppercase transition-all duration-150 border-l-2 border-transparent"
-                    style={{ color: 'rgba(225,224,204,0.38)' }}
-                    onMouseEnter={e =>
-                      ((e.currentTarget as HTMLElement).style.color = '#DEDBC8')
-                    }
-                    onMouseLeave={e =>
-                      ((e.currentTarget as HTMLElement).style.color = 'rgba(225,224,204,0.38)')
-                    }
-                  >
-                    <LogIn size={13} />
-                    Sign In
-                  </Link>
-                )}
+                <Link
+                  href="/auth/signin"
+                  onClick={() => setPanelOpen(false)}
+                  className="flex items-center gap-3 px-5 py-2.5 text-[11px] tracking-wider uppercase transition-all duration-150 border-l-2 border-transparent"
+                  style={{ color: 'rgba(225,224,204,0.35)' }}
+                  onMouseEnter={e =>
+                    ((e.currentTarget as HTMLElement).style.color = '#DEDBC8')
+                  }
+                  onMouseLeave={e =>
+                    ((e.currentTarget as HTMLElement).style.color = 'rgba(225,224,204,0.35)')
+                  }
+                >
+                  <LogIn size={13} />
+                  Sign In
+                </Link>
               </nav>
             )}
 

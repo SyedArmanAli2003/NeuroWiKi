@@ -182,3 +182,10 @@
 .wiki-prose table { width: 100%; border-collapse: collapse; margin: 1.25rem 0; font-size: 0.875rem; }
 .wiki-prose th { color: rgba(222,219,200,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; }
 .wiki-prose td { color: rgba(222,219,200,0.7); padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.04); line-height: 1.6; }
+
+/* GPU accelerate the sidebar panel */
+[data-sidebar-panel] {
+  transform: translateZ(0);
+  will-change: transform;
+  contain: layout style;
+}
