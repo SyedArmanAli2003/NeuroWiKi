@@ -2,7 +2,6 @@ import { generateObject } from 'ai'
 import { llm } from '@/lib/llm'
 import { z } from 'zod'
 import { hydra } from '@/lib/hydra'
-import { withGeminiRetry } from '@/lib/gemini-retry'
 import {
   getAllPages,
   getAllPageLinks,
@@ -174,7 +173,7 @@ export async function runLintSweep(tenantId: string = 'default'): Promise<LintRe
         .map(p => `[${p.slug}] ${p.title}:\n${p.content.slice(0, 400)}`)
         .join('\n\n---\n\n')
 
-      const { object } = await withGeminiRetry(() => generateObject({
+      const { object } = await generateObject({
         model: llm(),
         schema: GapSchema,
         prompt: `You are a wiki health auditor. Analyze the PAGES BEING ANALYZED below for:
@@ -192,7 +191,7 @@ Rules:
 - missingLinks: only flag entities significant enough to warrant a dedicated page
 - Be conservative — only flag clear cases
 - fromSlug must be one of the slugs in PAGES BEING ANALYZED`,
-      }))
+      })
 
       gaps = object.gaps.filter(g => !slugSet.has(g.entity.toLowerCase().replace(/\s+/g, '-')))
       missingLinks = object.missingLinks.filter(m => slugSet.has(m.fromSlug))

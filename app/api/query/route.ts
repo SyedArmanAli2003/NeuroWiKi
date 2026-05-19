@@ -84,7 +84,7 @@ Keep answers concise and factual.`
     model: llm(),
     system: systemPrompt,
     prompt: `Question: ${question}\n\nWiki context:\n${context}`,
-    maxOutputTokens: 600,
+    maxOutputTokens: 500,
   })
 
   return stream.toTextStreamResponse()

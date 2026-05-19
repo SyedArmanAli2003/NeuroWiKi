@@ -1,6 +1,5 @@
 import { generateObject, NoObjectGeneratedError } from 'ai'
 import { llm } from '../llm'
-import { withGeminiRetry } from '../gemini-retry'
 import { z } from 'zod'
 import { hydra, ensureTenant, waitForIngestion } from '../hydra'
 import { upsertPageHealth, upsertPageLinks, getAllPages, enqueueReindex } from '../db-helpers'
@@ -57,7 +56,7 @@ export async function runIngestAgent(
   }
 
   // Step 2 — Generate pages with Gemini
-  const result = await withGeminiRetry(() => generateObject({
+  const result = await generateObject({
     model: llm(),
     schema: z.object({
       pages: z.array(
@@ -99,7 +98,7 @@ Return JSON with a "pages" key containing an array. Each page must include:
 - sourceSentences: array of 2-10 exact quotes (under 20 words each)
   from the source text that back up the main claims in this page
 `,
-  })).catch((err: unknown) => {
+  }).catch((err: unknown) => {
     if (NoObjectGeneratedError.isInstance(err)) {
       console.error('[ingest] Raw Gemini response:', (err as any).text)
       console.error('[ingest] Cause:', (err as any).cause?.message)
