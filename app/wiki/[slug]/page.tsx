@@ -189,14 +189,30 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
             {/* Main content */}
             <article style={{ minWidth: 0 }}>
               <div className="wiki-prose-enhanced">
-                <WikiRenderer content={page.content} />
+                {page.content?.trim() ? (
+                  <WikiRenderer content={page.content} />
+                ) : (
+                  <div
+                    className="serif"
+                    style={{
+                      padding: '32px',
+                      border: '1px dashed var(--hair)',
+                      borderRadius: '6px',
+                      color: 'var(--ink-mute)',
+                      fontSize: 'var(--fs-body-sm)',
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    This page has no content yet. It may have been created as a stub from a wikilink or an enrichment pass that failed. Re-ingest the source or use <span style={{ color: 'var(--ink-soft)' }}>Edit with AI</span> to fill it in.
+                  </div>
+                )}
               </div>
 
               {/* Sources */}
               {page.sources?.length > 0 && (
                 <div className="mt-12 pt-8" style={{ borderTop: '1px solid var(--hair)' }}>
                   <p className="kicker kicker-rule mb-4">Built from</p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 mb-6">
                     {page.sources.map((s: { title: string; url?: string }, i: number) => (
                       <span
                         key={i}
@@ -213,6 +229,52 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
                       </span>
                     ))}
                   </div>
+
+                  {page.sources.some((s: { raw_content?: string }) => s.raw_content) && (
+                    <div className="flex flex-col gap-3">
+                      {page.sources.map((s: { title: string; raw_content?: string }, i: number) => (
+                        s.raw_content ? (
+                          <details
+                            key={i}
+                            style={{
+                              border: '1px solid var(--hair)',
+                              borderRadius: '6px',
+                              background: 'var(--surface)',
+                            }}
+                          >
+                            <summary
+                              className="kicker"
+                              style={{
+                                padding: '10px 14px',
+                                cursor: 'pointer',
+                                color: 'var(--ink-soft)',
+                                userSelect: 'none',
+                              }}
+                            >
+                              View raw source — {s.title || 'Source'} ({s.raw_content.length.toLocaleString()} chars)
+                            </summary>
+                            <pre
+                              className="serif"
+                              style={{
+                                padding: '16px 18px',
+                                borderTop: '1px solid var(--hair)',
+                                fontSize: 'var(--fs-body-sm)',
+                                lineHeight: 1.7,
+                                color: 'var(--ink-soft)',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                maxHeight: '60vh',
+                                overflowY: 'auto',
+                                fontFamily: 'inherit',
+                              }}
+                            >
+                              {s.raw_content}
+                            </pre>
+                          </details>
+                        ) : null
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </article>

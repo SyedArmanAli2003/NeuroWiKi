@@ -1,11 +1,19 @@
 import { hydra } from '@/lib/hydra'
-import { llm } from '@/lib/llm'
-import { streamText } from 'ai'
+import { llm, loggedStreamText } from '@/lib/llm'
 import { db } from '@/lib/db'
 
 export async function POST(req: Request) {
-  const { question } = await req.json()
+  const reqStart = Date.now()
+  let question = ''
+  try {
+    const body = await req.json()
+    question = body.question
+  } catch (err) {
+    console.error('[query] bad json body', err)
+    return Response.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
   if (!question?.trim()) return Response.json({ error: 'No question' }, { status: 400 })
+  console.log(`[query] start q="${question.slice(0, 100)}"`)
 
   let contextChunks: any[] = []
   let recallStrategy = 'vector'
@@ -22,8 +30,8 @@ export async function POST(req: Request) {
       contextChunks = res.chunks
       recallStrategy = 'graph_context'
     }
-  } catch {
-    // fall through to vector
+  } catch (err) {
+    console.warn('[query] graph recall failed', (err as Error)?.message)
   }
 
   // Strategy 2: pure vector recall
@@ -36,8 +44,8 @@ export async function POST(req: Request) {
       })
       contextChunks = res?.chunks ?? []
       recallStrategy = 'vector_fallback'
-    } catch {
-      // fall through to SQLite
+    } catch (err) {
+      console.warn('[query] vector recall failed', (err as Error)?.message)
     }
   }
 
@@ -80,11 +88,13 @@ Always cite which page your answer comes from using format: (Source: Page N — 
 If the answer is not in the wiki, say "This isn't covered in the wiki yet. Try adding more sources."
 Keep answers concise and factual.`
 
-  const stream = streamText({
+  console.log(`[query] llm call strategy=${recallStrategy} chunks=${contextChunks.length} contextLen=${context.length} prep=${Date.now() - reqStart}ms`)
+
+  const stream = loggedStreamText('query', {
     model: llm(),
     system: systemPrompt,
     prompt: `Question: ${question}\n\nWiki context:\n${context}`,
-    maxOutputTokens: 600,
+    maxOutputTokens: 500,
   })
 
   return stream.toTextStreamResponse()

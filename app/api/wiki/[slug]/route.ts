@@ -1,170 +1,83 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hydra, ensureTenant, waitForIngestion } from '@/lib/hydra'
 import { db } from '@/lib/db'
-import { upsertPageHealth, upsertPageLinks, getSourceById, getPageBySlug } from '@/lib/db-helpers'
+import { upsertPageHealth, upsertPageLinks, getSourceById } from '@/lib/db-helpers'
+import { fetchPage } from '@/lib/hydra-fetch'
 
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
-  // In Next.js 15 dynamic params are async
   const { slug } = await context.params
 
   try {
-    // 1a. Try authoritative SQLite → HydraDB direct fetch by source_id first.
-    // This avoids fuzzy text-recall flakiness right after a rename/upload.
-    const localPage = getPageBySlug(slug)
-    let pageSource: any = null
-    let directChunkContent = ''
-    if (localPage?.hydra_doc_id) {
-      try {
-        const direct = await hydra.fetch.listData({
-          tenant_id: 'default',
-          kind: 'knowledge',
-          source_ids: [localPage.hydra_doc_id],
-        }) as any
-        const src = (direct?.sources ?? [])[0]
-        if (src) {
-          pageSource = src
-          directChunkContent = src.content?.markdown ?? src.description ?? ''
-        }
-      } catch (e) {
-        console.warn(`[wiki] Direct fetch by hydra_doc_id failed for ${slug}:`, e)
-      }
-    }
-
-    // 1b. Fallback to fuzzy boolean recall if direct fetch missed.
-    const searchResponse = pageSource
-      ? { sources: [pageSource], chunks: [] as any[] }
-      : await hydra.recall.booleanRecall({
-          tenant_id: 'default',
-          query: slug,
-          operator: 'and',
-        })
-
-    if (!pageSource) {
-      const sources: any[] = searchResponse.sources ?? []
-      pageSource =
-        sources.find(
-          (s) => (s.additional_metadata?.slug as string) === slug || s.id === slug
-        ) ?? sources[0] ?? null
-
-      if (!pageSource) {
-        const chunk = (searchResponse.chunks ?? []).find(
-          (c: any) => c.source_id === slug
-        )
-        if (chunk) {
-          pageSource = {
-            id: chunk.source_id,
-            title: chunk.source_title,
-            additional_metadata: chunk.additional_metadata ?? undefined,
-            metadata: chunk.metadata ?? undefined,
-          }
-        }
-      }
-    }
-
-    if (!pageSource) {
+    const page = await fetchPage(slug)
+    if (!page) {
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
 
-    const stripTrailingMeta = (md: string): string => {
-      // Remove trailing JSON metadata bleed (", "files": [], "layout": [], ...)
-      // Cut at first occurrence of these known trailing JSON keys
-      const cut = md.search(/["',]\s*"(files|layout|tenant_metadata|document_metadata|meta|sub_tenant_id|sourceSentences|verified|verifiedAt|sourceId|manuallyEdited)"\s*:/)
-      if (cut > 0) return md.slice(0, cut).replace(/[",\s]+$/, '')
-      return md
-    }
-
-    const extractMarkdown = (chunkContent: string): string => {
-      if (!chunkContent) return ''
-      try {
-        const doc = JSON.parse(chunkContent)
-        const item = Array.isArray(doc) ? doc[0] : doc
-        return item?.content?.markdown || item?.markdown || ''
-      } catch {
-        // Regex fallback: extract "markdown": "..." even from truncated/malformed JSON
-        const m = chunkContent.match(/"markdown"\s*:\s*"((?:[^"\\]|\\.)*)/)
-        if (m?.[1]) {
-          let raw: string
-          try { raw = JSON.parse(`"${m[1]}"`) }
-          catch { raw = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') }
-          return stripTrailingMeta(raw)
-        }
-        // Not JSON-shaped → treat as plain text content
-        if (chunkContent.startsWith('{') || chunkContent.startsWith('[')) return ''
-        return stripTrailingMeta(chunkContent)
-      }
-    }
-
-    const chunks = (searchResponse.chunks ?? []).filter((c: any) => c.source_id === pageSource.id)
-    const firstChunk = chunks[0]
-    const parsedDoc = firstChunk ? (() => { try { return JSON.parse(firstChunk.chunk_content) } catch { return null } })() : null
-    const parsedItem = Array.isArray(parsedDoc) ? parsedDoc[0] : parsedDoc
-
-    const content = directChunkContent
-      || (parsedItem?.content?.markdown || parsedItem?.markdown)
-      || chunks.map((c: any) => extractMarkdown(c.chunk_content)).filter(Boolean).join('\n\n')
-      || ''
-
-    const meta = parsedDoc?.document_metadata ?? pageSource.additional_metadata ?? {}
-
-    // Resolve sources: page metadata stores sourceId; SQLite has full source records
+    // Resolve sources from SQLite
     const sourceIds: number[] = []
-    const rawSourceId = meta.sourceId ?? meta.source_id
-    if (rawSourceId !== undefined && rawSourceId !== null) {
-      const n = typeof rawSourceId === 'number' ? rawSourceId : parseInt(String(rawSourceId), 10)
+    if (page.sourceId !== undefined && page.sourceId !== null) {
+      const n = parseInt(String(page.sourceId), 10)
       if (!isNaN(n)) sourceIds.push(n)
     }
-
     const pageSources = sourceIds
       .map((id) => getSourceById(id))
       .filter((s): s is NonNullable<typeof s> => s !== null)
-      .map((s) => ({ title: s.title ?? 'Source', url: s.url ?? undefined }))
-
-    const page = {
-      slug: (meta.slug as string) || pageSource.id,
-      title: parsedItem?.title || parsedDoc?.title || pageSource.title || 'Unknown Title',
-      type: (meta.category as string) || 'concept',
-      summary: (meta.summary as string) || '',
-      content: content.replace(/^#\s+.+\n+/, ''),  // strip leading h1 — already shown in hero
-      sources: pageSources,
-      created_at: parsedDoc?.timestamp || pageSource.timestamp || '',
-    }
-    // 2. Fetch related pages using fullRecall — also returns RetrievalResult
-    const relatedResponse = await hydra.recall.fullRecall({
-      tenant_id: 'default',
-      query: page.title,
-      max_results: 6,
-      graph_context: true,
-    })
-
-    const relatedPages = (relatedResponse.sources ?? [])
-      .filter(
-        (s) => ((s.additional_metadata?.slug as string) || s.id) !== page.slug
-      )
-      .slice(0, 5)
-      .map((s: any) => ({
-        slug: (s.additional_metadata?.slug as string) || s.id,
-        title: s.title ?? 'Unknown',
-        summary: (s.additional_metadata?.summary as string) || '',
-        type: (s.additional_metadata?.category as string) || 'concept',
+      .map((s) => ({
+        title: s.title ?? 'Source',
+        url: s.url ?? undefined,
+        raw_content: s.raw_content ?? '',
       }))
 
-    // 3. Backlinks: pages that [[wikilink]] to this slug
+    // Related pages via fullRecall (still vector search — this is its actual job)
+    let relatedPages: any[] = []
+    try {
+      const relatedResponse = (await hydra.recall.fullRecall({
+        tenant_id: 'default',
+        query: page.title,
+        max_results: 6,
+        graph_context: true,
+      })) as any
+      relatedPages = (relatedResponse.sources ?? [])
+        .filter((s: any) => ((s.document_metadata?.slug as string) || s.id) !== page.slug)
+        .slice(0, 5)
+        .map((s: any) => ({
+          slug: (s.document_metadata?.slug as string) || s.id,
+          title: s.title ?? 'Unknown',
+          summary: (s.document_metadata?.summary as string) || '',
+          type: (s.document_metadata?.category as string) || 'concept',
+        }))
+    } catch (e) {
+      console.warn(`[wiki:${slug}] related recall failed:`, (e as Error)?.message)
+    }
+
+    // Backlinks from SQLite
     const backlinkRows = db.prepare(`
       SELECT pl.source_slug, p.title
       FROM page_links pl
       LEFT JOIN pages p ON p.slug = pl.source_slug
       WHERE pl.target_slug = ?
     `).all(slug) as Array<{ source_slug: string; title: string | null }>
-
-    const backlinks = backlinkRows.map(r => ({
+    const backlinks = backlinkRows.map((r) => ({
       slug: r.source_slug,
       title: r.title ?? r.source_slug,
     }))
 
-    return NextResponse.json({ page, relatedPages, backlinks })
+    return NextResponse.json({
+      page: {
+        slug: page.slug,
+        title: page.title || 'Unknown Title',
+        type: page.type,
+        summary: page.summary,
+        content: page.content.replace(/^#\s+.+\n+/, ''),
+        sources: pageSources,
+        created_at: page.timestamp || '',
+      },
+      relatedPages,
+      backlinks,
+    })
   } catch (error: any) {
     console.error(`Error fetching page ${slug}:`, error)
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -177,10 +90,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
 
   try {
     await ensureTenant('default')
-
     const cleanedContent = content.replace(/^#\s+.+\n+/, '')
 
-    const uploadResponse = await hydra.upload.knowledge({
+    const uploadResponse = (await hydra.upload.knowledge({
       tenant_id: 'default',
       upsert: true,
       app_knowledge: JSON.stringify([
@@ -201,7 +113,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
           },
         },
       ]),
-    }) as any
+    })) as any
 
     const realSourceId = uploadResponse?.results?.[0]?.source_id ?? slug
     const ready = await waitForIngestion(realSourceId, 'default')
@@ -216,7 +128,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
       hydra_doc_id: realSourceId,
     })
 
-    // Refresh wikilink graph from new content
     db.prepare(`DELETE FROM page_links WHERE source_slug = ?`).run(slug)
     const linkedSlugs = [...cleanedContent.matchAll(/\[\[([^\]]+)\]\]/g)].map((m: any) => m[1].trim())
     if (linkedSlugs.length) upsertPageLinks(slug, linkedSlugs)
@@ -227,4 +138,3 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
-

@@ -79,7 +79,7 @@ export async function GET() {
 
   const buffer = await zip.generateAsync({ type: 'uint8array' })
 
-  return new Response(buffer, {
+  return new Response(buffer as BodyInit, {
     headers: {
       'Content-Type': 'application/zip',
       'Content-Disposition': 'attachment; filename="neurowiki-export.zip"',

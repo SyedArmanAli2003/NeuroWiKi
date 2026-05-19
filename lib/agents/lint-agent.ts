@@ -1,8 +1,6 @@
-import { generateObject } from 'ai'
-import { llm } from '@/lib/llm'
+import { llm, loggedGenerateObject } from '@/lib/llm'
 import { z } from 'zod'
-import { hydra } from '@/lib/hydra'
-import { withGeminiRetry } from '@/lib/gemini-retry'
+import { listPages } from '@/lib/hydra-fetch'
 import {
   getAllPages,
   getAllPageLinks,
@@ -84,22 +82,11 @@ function findConnectedComponents(
 
 export async function runLintSweep(tenantId: string = 'default'): Promise<LintReport> {
   // Fetch all pages from HydraDB (nodes)
-  let hydraPages: Array<{ slug: string; title: string; content: string }> = []
-  try {
-    const res = await hydra.fetch.listData({
-      tenant_id: tenantId,
-      kind: 'knowledge',
-      page: 1,
-      page_size: 100,
-    }) as any
-    hydraPages = (res?.sources ?? []).map((item: any) => ({
-      slug: (item.document_metadata?.slug as string) || item.id,
-      title: item.title ?? '',
-      content: item.description ?? item.content?.markdown ?? '',
-    }))
-  } catch {
-    // empty wiki — all metrics will be zero
-  }
+  const hydraPages = (await listPages(tenantId)).map((p) => ({
+    slug: p.slug,
+    title: p.title,
+    content: p.content,
+  }))
 
   const slugSet = new Set(hydraPages.map(p => p.slug))
   const slugToTitle = new Map(hydraPages.map(p => [p.slug, p.title]))
@@ -174,7 +161,7 @@ export async function runLintSweep(tenantId: string = 'default'): Promise<LintRe
         .map(p => `[${p.slug}] ${p.title}:\n${p.content.slice(0, 400)}`)
         .join('\n\n---\n\n')
 
-      const { object } = await withGeminiRetry(() => generateObject({
+      const { object } = await loggedGenerateObject('lint', {
         model: llm(),
         schema: GapSchema,
         prompt: `You are a wiki health auditor. Analyze the PAGES BEING ANALYZED below for:
@@ -192,10 +179,10 @@ Rules:
 - missingLinks: only flag entities significant enough to warrant a dedicated page
 - Be conservative — only flag clear cases
 - fromSlug must be one of the slugs in PAGES BEING ANALYZED`,
-      }))
+      })
 
-      gaps = object.gaps.filter(g => !slugSet.has(g.entity.toLowerCase().replace(/\s+/g, '-')))
-      missingLinks = object.missingLinks.filter(m => slugSet.has(m.fromSlug))
+      gaps = (object as any).gaps.filter((g: any) => !slugSet.has(g.entity.toLowerCase().replace(/\s+/g, '-')))
+      missingLinks = (object as any).missingLinks.filter((m: any) => slugSet.has(m.fromSlug))
     } catch (e) {
       console.warn('[lint] Gap analysis failed:', e)
     }

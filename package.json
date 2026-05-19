@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.75",
+    "@ai-sdk/openai": "^3.0.64",
     "@ai-sdk/openai-compatible": "^2.0.47",
     "@base-ui/react": "^1.4.1",
     "@extractus/article-extractor": "^8.1.0",
@@ -23,7 +24,6 @@
     "@types/pdf-parse": "^1.1.5",
     "@vercel/analytics": "^2.0.1",
     "ai": "^6.0.184",
-    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
@@ -54,7 +54,6 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",

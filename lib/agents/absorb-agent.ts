@@ -1,8 +1,6 @@
-import { generateObject } from 'ai'
-import { llm } from '@/lib/llm'
+import { llm, loggedGenerateObject } from '@/lib/llm'
 import { z } from 'zod'
-import { hydra } from '@/lib/hydra'
-import { withGeminiRetry } from '@/lib/gemini-retry'
+import { fetchPage } from '@/lib/hydra-fetch'
 
 export interface ExistingPage {
   slug: string
@@ -54,76 +52,15 @@ export async function findExistingPage(
   slug: string,
   tenantId: string = 'default'
 ): Promise<ExistingPage | null> {
-  try {
-    const res = await hydra.recall.booleanRecall({
-      tenant_id: tenantId,
-      query: slug,
-      operator: 'and',
-    }) as any
-
-    const sources: any[] = res?.sources ?? []
-    const chunks: any[] = res?.chunks ?? []
-
-    // 1. Direct ID match
-    let match = sources.find((s) => s.id === slug)
-
-    // 2. additional_metadata.slug match (if populated)
-    if (!match) {
-      match = sources.find((s) => s.additional_metadata?.slug === slug)
-    }
-
-    // 3. Parse chunk JSON for document_metadata.slug (most reliable)
-    if (!match) {
-      const chunkMatch = chunks.find((c: any) => {
-        try {
-          const parsed = JSON.parse(c.chunk_content)
-          return parsed?.document_metadata?.slug === slug
-        } catch {
-          return c.source_id === slug
-        }
-      })
-      if (chunkMatch) {
-        match = sources.find((s) => s.id === chunkMatch.source_id) ?? {
-          id: chunkMatch.source_id,
-          title: chunkMatch.source_title ?? '',
-          additional_metadata: null,
-        }
-      }
-    }
-
-    if (!match) return null
-
-    // Extract content + metadata from chunk JSON
-    const matchChunk = chunks.find((c: any) => c.source_id === match.id)
-    let content = ''
-    let meta: any = {}
-
-    if (matchChunk?.chunk_content) {
-      try {
-        const parsed = JSON.parse(matchChunk.chunk_content)
-        content = parsed?.content?.markdown ?? matchChunk.chunk_content
-        meta = parsed?.document_metadata ?? {}
-      } catch {
-        content = matchChunk.chunk_content
-      }
-    }
-
-    const sourceSentences: string[] = Array.isArray(meta.sourceSentences)
-      ? meta.sourceSentences
-      : Array.isArray(match.additional_metadata?.sourceSentences)
-      ? match.additional_metadata.sourceSentences
-      : []
-
-    return {
-      slug,
-      title: match.title ?? meta.title ?? '',
-      content,
-      summary: meta.summary ?? match.additional_metadata?.summary ?? '',
-      type: meta.category ?? match.additional_metadata?.category ?? 'concept',
-      sourceSentences,
-    }
-  } catch {
-    return null
+  const p = await fetchPage(slug, tenantId)
+  if (!p) return null
+  return {
+    slug: p.slug,
+    title: p.title,
+    content: p.content,
+    summary: p.summary,
+    type: p.type,
+    sourceSentences: p.sourceSentences,
   }
 }
 
@@ -141,7 +78,7 @@ export async function absorbIntoExisting(
     ? availableSlugs.join(', ')
     : '(no slugs available — do not add wikilinks)'
 
-  const { object } = await withGeminiRetry(() => generateObject({
+  const { object } = await loggedGenerateObject('absorb', {
     model: llm(),
     schema: MergeSchema,
     prompt: `You are an expert wiki editor updating an existing knowledge base page with new information.
@@ -177,8 +114,14 @@ ${slugList}
 5. WIKILINKS: Preserve all existing [[wikilinks]]. Only add NEW wikilinks if the slug appears in the AVAILABLE WIKI LINKS list.
 6. CITATIONS: Your 'sourceSentences' output MUST include ALL existing citations listed above PLUS 1-4 new exact quotes from the new raw source text backing newly added claims.
 
-Return unified content, updated summary, and combined sourceSentences.`,
-  }))
+Return ONLY a JSON object with EXACTLY these three keys (use these exact key names, no other variants like "updatedContent" or "updatedSummary"):
+{
+  "content": string — the merged markdown body,
+  "summary": string — one updated sentence,
+  "sourceSentences": string[] — ALL existing citations plus new quotes
+}
+Output the JSON object only. No markdown fences, no commentary.`,
+  })
 
   return {
     content: object.content,
@@ -187,48 +130,4 @@ Return unified content, updated summary, and combined sourceSentences.`,
   }
 }
 
-export async function enrichRelatedPage(
-  relatedSlug: string,
-  newSourceText: string,
-  newPagesSummary: string,
-  availableSlugs: string[],
-  tenantId: string = 'default'
-): Promise<boolean> {
-  try {
-    const existing = await findExistingPage(relatedSlug, tenantId)
-    if (!existing || !existing.content) return false
-
-    const merged = await absorbIntoExisting(
-      existing,
-      { title: '', content: newPagesSummary, sourceSentences: [] },
-      newSourceText,
-      availableSlugs
-    )
-
-    await hydra.upload.knowledge({
-      tenant_id: tenantId,
-      upsert: true,
-      app_knowledge: JSON.stringify([{
-        tenant_id: tenantId,
-        sub_tenant_id: 'default',
-        id: relatedSlug,
-        title: existing.title,
-        type: 'document',
-        content: { markdown: merged.content },
-        document_metadata: {
-          category: existing.type,
-          summary: merged.summary,
-          sourceSentences: merged.sourceSentences,
-          verified: true,
-          verifiedAt: new Date().toISOString(),
-          slug: relatedSlug,
-        },
-      }]),
-    })
-
-    return true
-  } catch (e) {
-    console.warn(`[absorb] Failed to enrich related page ${relatedSlug}:`, e)
-    return false
-  }
-}
+// enrichRelatedPage removed — see ingest-agent TODO.

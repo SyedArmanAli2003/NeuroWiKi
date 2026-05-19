@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateObject } from 'ai'
-import { llm } from '@/lib/llm'
+import { llm, loggedGenerateObject } from '@/lib/llm'
 import { z } from 'zod'
 import { hydra, ensureTenant, waitForIngestion } from '@/lib/hydra'
 import { upsertPageHealth, upsertPageLinks, getAllPages } from '@/lib/db-helpers'
+import { listPages } from '@/lib/hydra-fetch'
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
@@ -28,25 +28,8 @@ export async function POST(req: NextRequest) {
 
   await ensureTenant('default')
 
-  // Fetch full content of source pages from HydraDB
-  let allHydraPages: Array<{ slug: string; title: string; content: string }> = []
-  try {
-    const res = await hydra.fetch.listData({
-      tenant_id: 'default',
-      kind: 'knowledge',
-      page: 1,
-      page_size: 100,
-    }) as any
-    allHydraPages = (res?.sources ?? []).map((item: any) => ({
-      slug: (item.document_metadata?.slug as string) || item.id,
-      title: item.title ?? '',
-      content: item.description ?? item.content?.markdown ?? '',
-    }))
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch wiki pages' }, { status: 500 })
-  }
-
-  const slugToContent = new Map(allHydraPages.map(p => [p.slug, p]))
+  const allHydraPages = await listPages()
+  const slugToContent = new Map(allHydraPages.map((p) => [p.slug, p]))
   const existingHydraIds = getAllPages().map(p => p.hydra_doc_id).filter((id): id is string => !!id)
   const existingSlugs = allHydraPages.map(p => p.slug)
 
@@ -69,7 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const { object: page } = await generateObject({
+      const { object: page } = await loggedGenerateObject('wiki-breakdown', {
         model: llm(),
         schema: PageSchema,
         prompt: `You are a wiki compiler. Create a wiki page for the entity "${entity}" using ONLY the information present in the source pages below. Do not add anything from training knowledge.

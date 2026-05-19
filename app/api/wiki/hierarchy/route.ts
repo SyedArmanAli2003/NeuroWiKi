@@ -1,102 +1,67 @@
 import { NextResponse } from 'next/server'
-import { hydra } from '@/lib/hydra'
 import { db } from '@/lib/db'
+import { listPageMeta } from '@/lib/hydra-fetch'
 
 export const revalidate = 60
 
 export async function GET() {
   try {
-    const items: any[] = []
-    let page = 1
-    try {
-      while (true) {
-        const response = (await hydra.fetch.listData({
-          tenant_id: 'default',
-          kind: 'knowledge',
-          page,
-          page_size: 100,
-        })) as any
-        const batch: any[] = response?.sources ?? []
-        items.push(...batch)
-        if (batch.length < 100) break
-        page++
-      }
-    } catch (e: any) {
-      if (!e.message?.includes('Tenant default does not exist') && e.status !== 404) {
-        throw e
-      }
-    }
+    const items = await listPageMeta()
 
-    // Backlink counts from SQLite
+    // Link counts from SQLite
     const backlinkRows = db.prepare(
       `SELECT target_slug, COUNT(*) as cnt FROM page_links GROUP BY target_slug`
     ).all() as Array<{ target_slug: string; cnt: number }>
-    const backlinkMap = new Map(backlinkRows.map(r => [r.target_slug, r.cnt]))
+    const backlinkMap = new Map(backlinkRows.map((r) => [r.target_slug, r.cnt]))
 
-    // Outlink counts (how many children each parent has via page_links)
+    const slugSet = new Set(items.map((i) => i.slug))
+
+    // outlinks → only count those pointing to existing pages
     const outlinkRows = db.prepare(
-      `SELECT source_slug, COUNT(*) as cnt FROM page_links GROUP BY source_slug`
-    ).all() as Array<{ source_slug: string; cnt: number }>
-    const outlinkMap = new Map(outlinkRows.map(r => [r.source_slug, r.cnt]))
-
-    const allSlugs = items.map((item: any) => (item.document_metadata?.slug as string) || item.id)
-    const slugSet = new Set(allSlugs)
-
-    // Build breakdown-child set: slugs that have breakdownSource set
-    const childSlugs = new Set<string>()
-    for (const item of items) {
-      const meta = item.document_metadata ?? {}
-      const bs = meta.breakdownSource
-      if (bs && (Array.isArray(bs) ? bs.length > 0 : true)) {
-        const slug = (meta.slug as string) || item.id
-        childSlugs.add(slug)
-      }
+      `SELECT source_slug, target_slug FROM page_links`
+    ).all() as Array<{ source_slug: string; target_slug: string }>
+    const outlinkExistingMap = new Map<string, number>()
+    for (const row of outlinkRows) {
+      if (!slugSet.has(row.target_slug)) continue
+      outlinkExistingMap.set(row.source_slug, (outlinkExistingMap.get(row.source_slug) ?? 0) + 1)
     }
 
-    const parents: any[] = []
-
+    // breakdown children: items whose breakdownSource contains parent slug
+    const breakdownChildrenMap = new Map<string, number>()
+    const isBreakdownChild = new Set<string>()
     for (const item of items) {
-      const meta = item.document_metadata ?? {}
-      const slug = (meta.slug as string) || item.id
-      const backlinkCount = backlinkMap.get(slug) ?? 0
-      const bs = meta.breakdownSource
-
-      const isBreakdownChild = bs && (Array.isArray(bs) ? bs.length > 0 : true)
-      const isHighCentrality = backlinkCount >= 3
-
-      if (!isBreakdownChild || isHighCentrality) {
-        // Count children: breakdown pages that reference this slug + outlinks
-        let childCount = 0
-        for (const ci of items) {
-          const cmeta = ci.document_metadata ?? {}
-          const cbs = cmeta.breakdownSource
-          if (cbs) {
-            const sources = Array.isArray(cbs) ? cbs : [cbs]
-            if (sources.includes(slug)) childCount++
-          }
+      const bs = item.breakdownSource ?? []
+      if (bs.length > 0) {
+        isBreakdownChild.add(item.slug)
+        for (const parent of bs) {
+          breakdownChildrenMap.set(parent, (breakdownChildrenMap.get(parent) ?? 0) + 1)
         }
-        // Also add outlinks to pages that exist
-        const outlinkCount = outlinkMap.get(slug) ?? 0
-        const linkedSlugs = db.prepare(
-          `SELECT target_slug FROM page_links WHERE source_slug = ?`
-        ).all(slug) as Array<{ target_slug: string }>
-        const linkedExisting = linkedSlugs.filter(r => slugSet.has(r.target_slug)).length
-        childCount = Math.max(childCount, linkedExisting)
-
-        parents.push({
-          slug,
-          title: (item.title as string) || '',
-          type: (meta.category as string) || 'concept',
-          summary: (meta.summary as string) || '',
-          childCount,
-          backlinkCount,
-          updated_at: (meta.verifiedAt as string) || (item.timestamp as string) || '',
-        })
       }
     }
 
-    // Sort: most children first, then backlinks
-    parents.sort((a, b) => (b.childCount - a.childCount) || (b.backlinkCount - a.backlinkCount))
+    // Parent set: pages that aren't breakdown children (unless high-centrality hub).
+    const parents = items
+      .filter((item) => {
+        const backlinkCount = backlinkMap.get(item.slug) ?? 0
+        return !isBreakdownChild.has(item.slug) || backlinkCount >= 3
+      })
+      .map((item) => ({
+        slug: item.slug,
+        title: item.title,
+        type: item.type,
+        summary: item.summary,
+        breakdownChildCount: breakdownChildrenMap.get(item.slug) ?? 0,
+        outlinkCount: outlinkExistingMap.get(item.slug) ?? 0,
+        backlinkCount: backlinkMap.get(item.slug) ?? 0,
+        updated_at: item.verifiedAt || item.timestamp || '',
+      }))
+
+    // Sort: pages w/ structural children first, then by centrality
+    parents.sort((a, b) =>
+      (b.breakdownChildCount - a.breakdownChildCount) ||
+      (b.backlinkCount - a.backlinkCount) ||
+      (b.outlinkCount - a.outlinkCount)
+    )
 
     return NextResponse.json({ parents })
   } catch (error: any) {
