@@ -1,68 +1,120 @@
 import Link from 'next/link'
 import { ArrowUpRight } from 'lucide-react'
 
+const productLinks = [
+  { label: 'Wiki', href: '/wiki' },
+  { label: 'Add Source', href: '/ingest' },
+  { label: 'Search', href: '/search' },
+  { label: 'Graph', href: '/graph' },
+]
+
+const resourceLinks = [
+  { label: 'Documentation', href: '/docs' },
+  { label: 'GitHub', href: 'https://github.com/SyedArmanAli2003/NeuroWiKi', external: true },
+]
+
 export function Footer() {
   return (
-    <footer className="bg-[#0a0a0a] border-t border-white/5 pt-16 pb-8 px-6 md:px-10 mt-auto">
-      <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
-          {/* Column 1: Brand */}
-          <div className="flex flex-col gap-4">
-            <h2 className="text-2xl font-bold text-white tracking-tight">
-              NeuroWiki<span className="text-[#DEDBC8]">*</span>
-            </h2>
-            <p className="text-gray-400 text-sm leading-relaxed pr-4">
-              Your sources. Your knowledge. One living, AI-built encyclopedia that never forgets — and knows when it's wrong.
+    <footer 
+      className="border-t mt-auto"
+      style={{ 
+        background: '#09090b',
+        borderColor: 'rgba(255,255,255,0.04)',
+      }}
+    >
+      <div className="max-w-6xl mx-auto px-6 py-16">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
+          {/* Brand */}
+          <div className="md:col-span-2">
+            <Link href="/" className="inline-flex items-center gap-2 mb-4">
+              <span className="text-xl font-medium" style={{ color: '#f5f5f4' }}>N</span>
+              <span 
+                className="text-sm font-medium tracking-widest uppercase"
+                style={{ color: 'rgba(245, 245, 244, 0.5)' }}
+              >
+                NeuroWiki
+              </span>
+            </Link>
+            <p 
+              className="text-sm leading-relaxed max-w-sm"
+              style={{ color: 'rgba(245, 245, 244, 0.4)' }}
+            >
+              Your personal memory agent. Store, connect, and retrieve your 
+              knowledge with AI-powered intelligence.
             </p>
           </div>
 
-          {/* Column 2: Product */}
-          <div className="flex flex-col gap-4">
-            <h3 className="text-white font-medium text-[11px] tracking-wider uppercase">Product</h3>
-            <div className="flex flex-col gap-3">
-              <Link href="/wiki" className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit">Browse Wiki</Link>
-              <Link href="/ingest" className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit">Add Source</Link>
-              <Link href="/search" className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit">Search & Ask</Link>
-              <Link href="/graph" className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit">Graph View</Link>
-            </div>
+          {/* Product */}
+          <div>
+            <h3 
+              className="text-[11px] font-medium tracking-wider uppercase mb-4"
+              style={{ color: 'rgba(245, 245, 244, 0.3)' }}
+            >
+              Product
+            </h3>
+            <ul className="space-y-2.5">
+              {productLinks.map(link => (
+                <li key={link.href}>
+                  <Link 
+                    href={link.href}
+                    className="text-[13px] transition-colors hover:text-[#f5f5f4]"
+                    style={{ color: 'rgba(245, 245, 244, 0.5)' }}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
 
-          {/* Column 3: Project */}
-          <div className="flex flex-col gap-4">
-            <h3 className="text-white font-medium text-[11px] tracking-wider uppercase">Project</h3>
-            <div className="flex flex-col gap-3">
-              <a href="https://github.com/SyedArmanAli2003/NeuroWiKi" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit">GitHub</a>
-              <a href="https://github.com/SyedArmanAli2003/NeuroWiKi#readme" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit">README</a>
-              <a href="https://github.com/SyedArmanAli2003/NeuroWiKi" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit">Architecture</a>
-              <a href="https://github.com/SyedArmanAli2003/NeuroWiKi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit">MIT License</a>
-            </div>
-          </div>
-
-          {/* Column 4: Built with */}
-          <div className="flex flex-col gap-4">
-            <h3 className="text-white font-medium text-[11px] tracking-wider uppercase">Built with</h3>
-            <div className="flex flex-col gap-3">
-              <span className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit cursor-default">Next.js 15</span>
-              <span className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit cursor-default">Gemini 2.0 Flash</span>
-              <span className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit cursor-default">HydraDB</span>
-              <span className="text-sm text-gray-400 hover:text-[#DEDBC8] transition-colors w-fit cursor-default">Google Cloud Run</span>
-            </div>
+          {/* Resources */}
+          <div>
+            <h3 
+              className="text-[11px] font-medium tracking-wider uppercase mb-4"
+              style={{ color: 'rgba(245, 245, 244, 0.3)' }}
+            >
+              Resources
+            </h3>
+            <ul className="space-y-2.5">
+              {resourceLinks.map(link => (
+                <li key={link.href}>
+                  {link.external ? (
+                    <a 
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[13px] transition-colors hover:text-[#f5f5f4]"
+                      style={{ color: 'rgba(245, 245, 244, 0.5)' }}
+                    >
+                      {link.label}
+                      <ArrowUpRight size={12} />
+                    </a>
+                  ) : (
+                    <Link 
+                      href={link.href}
+                      className="text-[13px] transition-colors hover:text-[#f5f5f4]"
+                      style={{ color: 'rgba(245, 245, 244, 0.5)' }}
+                    >
+                      {link.label}
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
 
         {/* Bottom bar */}
-        <div className="border-t border-white/5 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-gray-600">
-            © 2026 NeuroWiki · MIT License
+        <div 
+          className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t"
+          style={{ borderColor: 'rgba(255,255,255,0.04)' }}
+        >
+          <p className="text-[11px]" style={{ color: 'rgba(245, 245, 244, 0.25)' }}>
+            Built with Hydra DB and AI
           </p>
-          <a
-            href="https://github.com/SyedArmanAli2003/NeuroWiKi"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-[#DEDBC8] transition-colors"
-          >
-            View on GitHub <ArrowUpRight size={12} />
-          </a>
+          <p className="text-[11px]" style={{ color: 'rgba(245, 245, 244, 0.25)' }}>
+            MIT License
+          </p>
         </div>
       </div>
     </footer>
