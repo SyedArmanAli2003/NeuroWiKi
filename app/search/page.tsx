@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Search, Sparkles, Clock, Copy, Check, 
   ArrowRight, Loader2, BookmarkPlus, Send
@@ -52,7 +51,6 @@ export default function SearchPage() {
   const [savingToWiki, setSavingToWiki] = useState(false)
   const [savedSlug, setSavedSlug] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const answerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -163,11 +161,7 @@ export default function SearchPage() {
     <div className="min-h-screen bg-[#09090b]">
       <div className="max-w-2xl mx-auto px-4 pt-20 pb-32">
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-10"
-        >
+        <div className="text-center mb-10">
           <h1 
             className="text-3xl sm:text-4xl font-medium tracking-tight mb-3"
             style={{ color: '#f5f5f4' }}
@@ -177,15 +171,10 @@ export default function SearchPage() {
           <p className="text-sm" style={{ color: 'rgba(245, 245, 244, 0.5)' }}>
             Search your knowledge or ask AI to synthesize an answer
           </p>
-        </motion.div>
+        </div>
 
         {/* Mode toggle */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="flex justify-center mb-6"
-        >
+        <div className="flex justify-center mb-6">
           <div 
             className="inline-flex p-1 rounded-lg"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
@@ -194,7 +183,7 @@ export default function SearchPage() {
               <button
                 key={m}
                 onClick={() => { setMode(m); setAnswer(''); setFiltered([]) }}
-                className="flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all duration-150"
+                className="flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-colors duration-150"
                 style={{
                   background: mode === m ? 'rgba(255,255,255,0.08)' : 'transparent',
                   color: mode === m ? '#f5f5f4' : 'rgba(245, 245, 244, 0.4)',
@@ -205,17 +194,12 @@ export default function SearchPage() {
               </button>
             ))}
           </div>
-        </motion.div>
+        </div>
 
         {/* Search input */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="relative"
-        >
+        <div className="relative">
           <div
-            className="flex items-center gap-3 rounded-xl transition-all duration-150"
+            className="flex items-center gap-3 rounded-xl transition-colors duration-150"
             style={{
               padding: '14px 18px',
               background: 'rgba(255,255,255,0.03)',
@@ -241,7 +225,7 @@ export default function SearchPage() {
               <button
                 onClick={() => handleAsk()}
                 disabled={loading || !query.trim()}
-                className="flex items-center justify-center w-8 h-8 rounded-lg transition-all disabled:opacity-30"
+                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-150 disabled:opacity-30"
                 style={{ 
                   background: query.trim() ? '#f5f5f4' : 'rgba(255,255,255,0.05)',
                 }}
@@ -254,72 +238,47 @@ export default function SearchPage() {
               </button>
             )}
           </div>
-        </motion.div>
+        </div>
 
         {/* Search results */}
-        <AnimatePresence mode="wait">
-          {mode === 'search' && filtered.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mt-4 space-y-2"
-            >
-              {filtered.map((page, i) => (
-                <motion.div
-                  key={page.slug}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.03 }}
-                >
-                  <Link href={`/wiki/${page.slug}`}>
-                    <div
-                      className="surface-card p-4 group"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <TypeBadge type={page.type} />
-                      </div>
-                      <h3 
-                        className="text-[14px] font-medium mb-1 group-hover:text-[#f5f5f4] transition-colors"
-                        style={{ color: 'rgba(245, 245, 244, 0.9)' }}
-                      >
-                        {highlightText(page.title, query)}
-                      </h3>
-                      <p 
-                        className="text-[12px] leading-relaxed line-clamp-2"
-                        style={{ color: 'rgba(245, 245, 244, 0.4)' }}
-                      >
-                        {highlightText(page.summary || '', query)}
-                      </p>
-                    </div>
-                  </Link>
-                </motion.div>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {mode === 'search' && filtered.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {filtered.map((page) => (
+              <Link key={page.slug} href={`/wiki/${page.slug}`}>
+                <div className="surface-card p-4 group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TypeBadge type={page.type} />
+                  </div>
+                  <h3 
+                    className="text-[14px] font-medium mb-1 group-hover:text-[#f5f5f4] transition-colors duration-150"
+                    style={{ color: 'rgba(245, 245, 244, 0.9)' }}
+                  >
+                    {highlightText(page.title, query)}
+                  </h3>
+                  <p 
+                    className="text-[12px] leading-relaxed line-clamp-2"
+                    style={{ color: 'rgba(245, 245, 244, 0.4)' }}
+                  >
+                    {highlightText(page.summary || '', query)}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* No search results */}
         {mode === 'search' && query && filtered.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mt-8 text-center"
-          >
+          <div className="mt-8 text-center">
             <p className="text-[13px]" style={{ color: 'rgba(245, 245, 244, 0.4)' }}>
               No memories found. Try asking AI instead.
             </p>
-          </motion.div>
+          </div>
         )}
 
         {/* Query history */}
         {mode === 'ask' && !query && !answer && history.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="mt-8"
-          >
+          <div className="mt-8">
             <p 
               className="text-[11px] font-medium tracking-wider uppercase mb-3"
               style={{ color: 'rgba(245, 245, 244, 0.3)' }}
@@ -331,7 +290,7 @@ export default function SearchPage() {
                 <button
                   key={i}
                   onClick={() => handleAsk(h)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors duration-150 hover:bg-[rgba(255,255,255,0.03)]"
                 >
                   <Clock size={14} style={{ color: 'rgba(245, 245, 244, 0.2)', flexShrink: 0 }} />
                   <span 
@@ -343,164 +302,137 @@ export default function SearchPage() {
                 </button>
               ))}
             </div>
-          </motion.div>
+          </div>
         )}
 
         {/* AI Answer */}
-        <AnimatePresence mode="wait">
-          {mode === 'ask' && (answer || loading) && (
-            <motion.div
-              ref={answerRef}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mt-6"
+        {mode === 'ask' && (answer || loading) && (
+          <div className="mt-6">
+            <div
+              className="rounded-xl p-5"
+              style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.06)',
+              }}
             >
-              <div
-                className="rounded-xl p-5"
-                style={{
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                }}
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Sparkles size={14} style={{ color: '#d4a574' }} />
-                    <span 
-                      className="text-[11px] font-medium tracking-wider uppercase"
-                      style={{ color: 'rgba(245, 245, 244, 0.4)' }}
-                    >
-                      Answer
-                    </span>
-                  </div>
-                  {answer && !loading && (
-                    <button
-                      onClick={handleCopy}
-                      className="flex items-center gap-1.5 text-[11px] transition-opacity hover:opacity-80"
-                      style={{ color: 'rgba(245, 245, 244, 0.4)' }}
-                    >
-                      {copied ? <Check size={12} /> : <Copy size={12} />}
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
-                  )}
-                </div>
-
-                {/* Loading state */}
-                {loading && !answer && (
-                  <div className="flex items-center gap-2 py-2">
-                    <div className="flex gap-1">
-                      {[0, 1, 2].map(i => (
-                        <motion.span
-                          key={i}
-                          className="w-1.5 h-1.5 rounded-full bg-[#d4a574]"
-                          animate={{ opacity: [0.3, 1, 0.3] }}
-                          transition={{
-                            duration: 1,
-                            repeat: Infinity,
-                            delay: i * 0.15,
-                          }}
-                        />
-                      ))}
-                    </div>
-                    <span className="text-[12px]" style={{ color: 'rgba(245, 245, 244, 0.4)' }}>
-                      Thinking...
-                    </span>
-                  </div>
-                )}
-
-                {/* Answer content */}
-                {answer && (
-                  <p
-                    className="text-[14px] leading-relaxed whitespace-pre-wrap"
-                    style={{ color: 'rgba(245, 245, 244, 0.8)' }}
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} style={{ color: '#d4a574' }} />
+                  <span 
+                    className="text-[11px] font-medium tracking-wider uppercase"
+                    style={{ color: 'rgba(245, 245, 244, 0.4)' }}
                   >
-                    {answer}
-                  </p>
+                    Answer
+                  </span>
+                </div>
+                {answer && !loading && (
+                  <button
+                    onClick={handleCopy}
+                    className="flex items-center gap-1.5 text-[11px] transition-opacity duration-150 hover:opacity-80"
+                    style={{ color: 'rgba(245, 245, 244, 0.4)' }}
+                  >
+                    {copied ? <Check size={12} /> : <Copy size={12} />}
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
                 )}
               </div>
 
-              {/* Save to Wiki */}
-              {!loading && answer && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="mt-4"
-                >
-                  <div 
-                    className="rounded-xl p-4 flex items-center justify-between"
-                    style={{ 
-                      background: 'rgba(212, 165, 116, 0.05)',
-                      border: '1px solid rgba(212, 165, 116, 0.15)',
-                    }}
-                  >
-                    <div>
-                      <p className="text-[13px] font-medium" style={{ color: '#f5f5f4' }}>
-                        Save to Wiki
-                      </p>
-                      <p className="text-[11px] mt-0.5" style={{ color: 'rgba(245, 245, 244, 0.5)' }}>
-                        Turn this into a permanent memory
-                      </p>
-                    </div>
-                    {savedSlug ? (
-                      <Link
-                        href={`/wiki/${savedSlug}`}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-medium transition-colors"
-                        style={{ 
-                          background: 'rgba(212, 165, 116, 0.15)',
-                          color: '#d4a574',
-                        }}
-                      >
-                        View <ArrowRight size={12} />
-                      </Link>
-                    ) : (
-                      <button
-                        onClick={handleSaveToWiki}
-                        disabled={savingToWiki}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-medium transition-all disabled:opacity-50"
-                        style={{ 
-                          background: '#f5f5f4',
-                          color: '#09090b',
-                        }}
-                      >
-                        {savingToWiki ? (
-                          <>
-                            <Loader2 size={12} className="animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <BookmarkPlus size={14} />
-                            Save
-                          </>
-                        )}
-                      </button>
-                    )}
+              {/* Loading state */}
+              {loading && !answer && (
+                <div className="flex items-center gap-2 py-2">
+                  <div className="flex gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#d4a574] animate-pulse" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#d4a574] animate-pulse" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#d4a574] animate-pulse" style={{ animationDelay: '300ms' }} />
                   </div>
-                </motion.div>
+                  <span className="text-[12px]" style={{ color: 'rgba(245, 245, 244, 0.4)' }}>
+                    Thinking...
+                  </span>
+                </div>
               )}
 
-              {/* New question */}
+              {/* Answer content */}
               {answer && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.3 }}
-                  className="mt-4 text-center"
+                <p
+                  className="text-[14px] leading-relaxed whitespace-pre-wrap"
+                  style={{ color: 'rgba(245, 245, 244, 0.8)' }}
                 >
-                  <button
-                    onClick={() => { setAnswer(''); setQuery(''); inputRef.current?.focus() }}
-                    className="text-[12px] transition-opacity hover:opacity-80"
-                    style={{ color: 'rgba(245, 245, 244, 0.4)' }}
-                  >
-                    Ask another question
-                  </button>
-                </motion.div>
+                  {answer}
+                </p>
               )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+
+            {/* Save to Wiki */}
+            {!loading && answer && (
+              <div className="mt-4">
+                <div 
+                  className="rounded-xl p-4 flex items-center justify-between"
+                  style={{ 
+                    background: 'rgba(212, 165, 116, 0.05)',
+                    border: '1px solid rgba(212, 165, 116, 0.15)',
+                  }}
+                >
+                  <div>
+                    <p className="text-[13px] font-medium" style={{ color: '#f5f5f4' }}>
+                      Save to Wiki
+                    </p>
+                    <p className="text-[11px] mt-0.5" style={{ color: 'rgba(245, 245, 244, 0.5)' }}>
+                      Turn this into a permanent memory
+                    </p>
+                  </div>
+                  {savedSlug ? (
+                    <Link
+                      href={`/wiki/${savedSlug}`}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-medium transition-colors duration-150"
+                      style={{ 
+                        background: 'rgba(212, 165, 116, 0.15)',
+                        color: '#d4a574',
+                      }}
+                    >
+                      View <ArrowRight size={12} />
+                    </Link>
+                  ) : (
+                    <button
+                      onClick={handleSaveToWiki}
+                      disabled={savingToWiki}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-medium transition-opacity duration-150 disabled:opacity-50"
+                      style={{ 
+                        background: '#f5f5f4',
+                        color: '#09090b',
+                      }}
+                    >
+                      {savingToWiki ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <BookmarkPlus size={14} />
+                          Save
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* New question */}
+            {answer && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => { setAnswer(''); setQuery(''); inputRef.current?.focus() }}
+                  className="text-[12px] transition-opacity duration-150 hover:opacity-80"
+                  style={{ color: 'rgba(245, 245, 244, 0.4)' }}
+                >
+                  Ask another question
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

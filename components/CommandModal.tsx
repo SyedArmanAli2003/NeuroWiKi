@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { 
   BookOpen, Plus, Network, ShieldCheck, Search, X, 
@@ -30,7 +29,6 @@ export function CommandModal({ open, onClose }: { open: boolean; onClose: () => 
   const [results, setResults] = useState<Page[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
 
-  // Fetch pages when modal opens
   useEffect(() => {
     if (open && allPages.length === 0) {
       fetch('/api/wiki?includeDiary=1')
@@ -44,7 +42,6 @@ export function CommandModal({ open, onClose }: { open: boolean; onClose: () => 
     }
   }, [open, allPages.length])
 
-  // Filter pages based on query
   useEffect(() => {
     if (!query.trim()) {
       setResults([])
@@ -63,7 +60,6 @@ export function CommandModal({ open, onClose }: { open: boolean; onClose: () => 
     setSelectedIndex(0)
   }, [query, allPages])
 
-  // Keyboard navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     const items = query ? results : quickActions
     const maxIndex = items.length - 1
@@ -86,7 +82,6 @@ export function CommandModal({ open, onClose }: { open: boolean; onClose: () => 
     }
   }, [query, results, selectedIndex, onClose])
 
-  // ESC to close
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -95,174 +90,154 @@ export function CommandModal({ open, onClose }: { open: boolean; onClose: () => 
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
+  if (!open) return null
+
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="fixed inset-0 z-50"
-            style={{ 
-              background: 'rgba(0,0,0,0.6)', 
-              backdropFilter: 'blur(4px)',
-            }}
-            onClick={onClose}
-          />
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-50"
+        style={{ background: 'rgba(0,0,0,0.6)' }}
+        onClick={onClose}
+      />
 
-          {/* Modal */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: -8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: -8 }}
-            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed top-[15vh] left-1/2 -translate-x-1/2 z-50 w-full max-w-lg px-4"
-          >
-            <div
-              className="w-full rounded-xl overflow-hidden"
-              style={{
-                background: '#111113',
-                border: '1px solid rgba(255,255,255,0.08)',
-                boxShadow: '0 24px 48px -12px rgba(0,0,0,0.5)',
-              }}
+      {/* Modal */}
+      <div className="fixed top-[15vh] left-1/2 -translate-x-1/2 z-50 w-full max-w-lg px-4">
+        <div
+          className="w-full rounded-xl overflow-hidden"
+          style={{
+            background: '#111113',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: '0 24px 48px -12px rgba(0,0,0,0.5)',
+          }}
+        >
+          {/* Search input */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-[rgba(255,255,255,0.04)]">
+            <Search size={16} style={{ color: 'rgba(245, 245, 244, 0.3)', flexShrink: 0 }} />
+            <input
+              autoFocus
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Search memories or type a command..."
+              className="flex-1 bg-transparent outline-none text-[14px]"
+              style={{ color: '#f5f5f4' }}
+            />
+            <button 
+              onClick={onClose} 
+              className="p-1 rounded hover:bg-[rgba(255,255,255,0.05)] transition-colors duration-150"
+              aria-label="Close"
             >
-              {/* Search input */}
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-[rgba(255,255,255,0.04)]">
-                <Search size={16} style={{ color: 'rgba(245, 245, 244, 0.3)', flexShrink: 0 }} />
-                <input
-                  autoFocus
-                  value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Search memories or type a command..."
-                  className="flex-1 bg-transparent outline-none text-[14px]"
-                  style={{ color: '#f5f5f4' }}
-                />
-                <button 
-                  onClick={onClose} 
-                  className="p-1 rounded hover:bg-[rgba(255,255,255,0.05)] transition-colors"
-                  aria-label="Close"
+              <X size={14} style={{ color: 'rgba(245, 245, 244, 0.3)' }} />
+            </button>
+          </div>
+
+          {/* Results */}
+          <div className="max-h-72 overflow-y-auto py-2">
+            {query && results.length > 0 && (
+              <div className="px-2">
+                <p 
+                  className="px-2 py-1.5 text-[10px] font-medium tracking-wider uppercase"
+                  style={{ color: 'rgba(245, 245, 244, 0.3)' }}
                 >
-                  <X size={14} style={{ color: 'rgba(245, 245, 244, 0.3)' }} />
-                </button>
+                  Memories
+                </p>
+                {results.map((page, index) => (
+                  <Link
+                    key={page.slug}
+                    href={`/wiki/${page.slug}`}
+                    onClick={onClose}
+                    className="flex items-center gap-3 px-2 py-2.5 rounded-lg transition-colors duration-150"
+                    style={{
+                      background: selectedIndex === index ? 'rgba(255,255,255,0.05)' : 'transparent',
+                    }}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                  >
+                    <BookOpen size={14} style={{ color: 'rgba(245, 245, 244, 0.3)', flexShrink: 0 }} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium truncate" style={{ color: '#f5f5f4' }}>
+                        {page.title}
+                      </p>
+                      {page.summary && (
+                        <p className="text-[11px] truncate mt-0.5" style={{ color: 'rgba(245, 245, 244, 0.4)' }}>
+                          {page.summary}
+                        </p>
+                      )}
+                    </div>
+                    <ArrowRight size={12} style={{ color: 'rgba(245, 245, 244, 0.2)' }} />
+                  </Link>
+                ))}
               </div>
+            )}
 
-              {/* Results */}
-              <div className="max-h-72 overflow-y-auto py-2">
-                {/* Search results */}
-                {query && results.length > 0 && (
-                  <div className="px-2">
-                    <p 
-                      className="px-2 py-1.5 text-[10px] font-medium tracking-wider uppercase"
-                      style={{ color: 'rgba(245, 245, 244, 0.3)' }}
-                    >
-                      Memories
-                    </p>
-                    {results.map((page, index) => (
-                      <Link
-                        key={page.slug}
-                        href={`/wiki/${page.slug}`}
-                        onClick={onClose}
-                        className="flex items-center gap-3 px-2 py-2.5 rounded-lg transition-colors"
-                        style={{
-                          background: selectedIndex === index ? 'rgba(255,255,255,0.05)' : 'transparent',
+            {query && results.length === 0 && (
+              <div className="px-4 py-8 text-center">
+                <p className="text-[13px]" style={{ color: 'rgba(245, 245, 244, 0.4)' }}>
+                  No memories found for &quot;{query}&quot;
+                </p>
+                <Link
+                  href={`/search?q=${encodeURIComponent(query)}`}
+                  onClick={onClose}
+                  className="mt-3 inline-flex items-center gap-1.5 text-[12px] transition-opacity duration-150 hover:opacity-80"
+                  style={{ color: 'rgba(245, 245, 244, 0.6)' }}
+                >
+                  <Sparkles size={12} />
+                  Ask AI instead
+                </Link>
+              </div>
+            )}
+
+            {!query && (
+              <div className="px-2">
+                <p 
+                  className="px-2 py-1.5 text-[10px] font-medium tracking-wider uppercase"
+                  style={{ color: 'rgba(245, 245, 244, 0.3)' }}
+                >
+                  Quick actions
+                </p>
+                {quickActions.map(({ label, href, icon: Icon, kbd }, index) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={onClose}
+                    className="flex items-center gap-3 px-2 py-2.5 rounded-lg transition-colors duration-150"
+                    style={{
+                      background: selectedIndex === index ? 'rgba(255,255,255,0.05)' : 'transparent',
+                    }}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                  >
+                    <Icon size={14} style={{ color: 'rgba(245, 245, 244, 0.3)', flexShrink: 0 }} />
+                    <span className="text-[13px] flex-1" style={{ color: 'rgba(245, 245, 244, 0.7)' }}>
+                      {label}
+                    </span>
+                    {kbd && (
+                      <span 
+                        className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                        style={{ 
+                          background: 'rgba(255,255,255,0.04)',
+                          color: 'rgba(245, 245, 244, 0.3)',
                         }}
-                        onMouseEnter={() => setSelectedIndex(index)}
                       >
-                        <BookOpen size={14} style={{ color: 'rgba(245, 245, 244, 0.3)', flexShrink: 0 }} />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[13px] font-medium truncate" style={{ color: '#f5f5f4' }}>
-                            {page.title}
-                          </p>
-                          {page.summary && (
-                            <p className="text-[11px] truncate mt-0.5" style={{ color: 'rgba(245, 245, 244, 0.4)' }}>
-                              {page.summary}
-                            </p>
-                          )}
-                        </div>
-                        <ArrowRight size={12} style={{ color: 'rgba(245, 245, 244, 0.2)' }} />
-                      </Link>
-                    ))}
-                  </div>
-                )}
-
-                {/* No results */}
-                {query && results.length === 0 && (
-                  <div className="px-4 py-8 text-center">
-                    <p className="text-[13px]" style={{ color: 'rgba(245, 245, 244, 0.4)' }}>
-                      No memories found for &quot;{query}&quot;
-                    </p>
-                    <Link
-                      href={`/search?q=${encodeURIComponent(query)}`}
-                      onClick={onClose}
-                      className="mt-3 inline-flex items-center gap-1.5 text-[12px] transition-opacity hover:opacity-80"
-                      style={{ color: 'rgba(245, 245, 244, 0.6)' }}
-                    >
-                      <Sparkles size={12} />
-                      Ask AI instead
-                    </Link>
-                  </div>
-                )}
-
-                {/* Quick actions (when no query) */}
-                {!query && (
-                  <div className="px-2">
-                    <p 
-                      className="px-2 py-1.5 text-[10px] font-medium tracking-wider uppercase"
-                      style={{ color: 'rgba(245, 245, 244, 0.3)' }}
-                    >
-                      Quick actions
-                    </p>
-                    {quickActions.map(({ label, href, icon: Icon, kbd }, index) => (
-                      <Link
-                        key={href}
-                        href={href}
-                        onClick={onClose}
-                        className="flex items-center gap-3 px-2 py-2.5 rounded-lg transition-colors"
-                        style={{
-                          background: selectedIndex === index ? 'rgba(255,255,255,0.05)' : 'transparent',
-                        }}
-                        onMouseEnter={() => setSelectedIndex(index)}
-                      >
-                        <Icon size={14} style={{ color: 'rgba(245, 245, 244, 0.3)', flexShrink: 0 }} />
-                        <span className="text-[13px] flex-1" style={{ color: 'rgba(245, 245, 244, 0.7)' }}>
-                          {label}
-                        </span>
-                        {kbd && (
-                          <span 
-                            className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                            style={{ 
-                              background: 'rgba(255,255,255,0.04)',
-                              color: 'rgba(245, 245, 244, 0.3)',
-                            }}
-                          >
-                            {kbd}
-                          </span>
-                        )}
-                      </Link>
-                    ))}
-                  </div>
-                )}
+                        {kbd}
+                      </span>
+                    )}
+                  </Link>
+                ))}
               </div>
+            )}
+          </div>
 
-              {/* Footer */}
-              <div 
-                className="px-4 py-2 flex items-center gap-4 border-t border-[rgba(255,255,255,0.04)]"
-              >
-                <span className="text-[10px]" style={{ color: 'rgba(245, 245, 244, 0.25)' }}>
-                  ESC to close
-                </span>
-                <span className="text-[10px]" style={{ color: 'rgba(245, 245, 244, 0.25)' }}>
-                  Enter to select
-                </span>
-              </div>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+          {/* Footer */}
+          <div className="px-4 py-2 flex items-center gap-4 border-t border-[rgba(255,255,255,0.04)]">
+            <span className="text-[10px]" style={{ color: 'rgba(245, 245, 244, 0.25)' }}>
+              ESC to close
+            </span>
+            <span className="text-[10px]" style={{ color: 'rgba(245, 245, 244, 0.25)' }}>
+              Enter to select
+            </span>
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
