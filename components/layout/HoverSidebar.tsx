@@ -45,11 +45,11 @@ export function HoverSidebar() {
   }, [])
 
   useEffect(() => {
+    setPanelOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === '[' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault()
-        setPanelOpen(prev => !prev)
-      }
       if (e.key === 'Escape' && panelOpen) {
         setPanelOpen(false)
       }
@@ -92,7 +92,7 @@ export function HoverSidebar() {
       {/* Backdrop */}
       {panelOpen && (
         <div
-          className="fixed inset-0 z-40 transition-opacity duration-150"
+          className="fixed inset-0 z-40"
           style={{ background: 'rgba(0,0,0,0.5)' }}
           onClick={() => setPanelOpen(false)}
         />
@@ -106,6 +106,7 @@ export function HoverSidebar() {
           background: '#0c0c0e',
           borderRight: '1px solid rgba(255,255,255,0.06)',
           transform: panelOpen ? 'translateX(0)' : 'translateX(-100%)',
+          willChange: 'transform',
         }}
         onMouseEnter={cancelClose}
         onMouseLeave={closePanel}
@@ -144,7 +145,6 @@ export function HoverSidebar() {
                 <Link
                   key={href}
                   href={href}
-                  onClick={() => setPanelOpen(false)}
                   className="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors duration-150"
                   style={{
                     background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
@@ -167,7 +167,6 @@ export function HoverSidebar() {
                 <Link
                   key={href}
                   href={href}
-                  onClick={() => setPanelOpen(false)}
                   className="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] transition-colors duration-150"
                   style={{
                     background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
@@ -182,24 +181,6 @@ export function HoverSidebar() {
           </div>
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-[rgba(255,255,255,0.04)]">
-          <div className="flex items-center gap-2">
-            <span 
-              className="px-1.5 py-0.5 rounded text-[10px] font-mono"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                color: 'rgba(245, 245, 244, 0.35)',
-              }}
-            >
-              [
-            </span>
-            <span className="text-[11px]" style={{ color: 'rgba(245, 245, 244, 0.25)' }}>
-              to toggle
-            </span>
-          </div>
-        </div>
       </div>
     </>
   )

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { hydra } from '@/lib/hydra'
+import { listAllKnowledgeRaw } from '@/lib/hydra-fetch'
 import { db } from '@/lib/db'
 
 export async function GET(
@@ -9,26 +9,7 @@ export async function GET(
   const { slug } = await context.params
 
   try {
-    const items: any[] = []
-    let page = 1
-    try {
-      while (true) {
-        const response = (await hydra.fetch.listData({
-          tenant_id: 'default',
-          kind: 'knowledge',
-          page,
-          page_size: 100,
-        })) as any
-        const batch: any[] = response?.sources ?? []
-        items.push(...batch)
-        if (batch.length < 100) break
-        page++
-      }
-    } catch (e: any) {
-      if (!e.message?.includes('Tenant default does not exist') && e.status !== 404) {
-        throw e
-      }
-    }
+    const items = await listAllKnowledgeRaw('default')
 
     const slugSet = new Set(items.map((i: any) => (i.document_metadata?.slug as string) || i.id))
     const childSlugs = new Set<string>()

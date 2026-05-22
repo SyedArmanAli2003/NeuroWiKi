@@ -346,12 +346,22 @@ export default function GraphPage() {
 
       {/* Stats */}
       {!loading && (
-        <div className="absolute top-4 left-4 pointer-events-none">
-          <p className="text-xs font-medium" style={{ color: 'rgba(222,219,200,0.45)' }}>
+        <div className="absolute pointer-events-none" style={{ top: 96, left: 28 }}>
+          <p
+            style={{
+              fontSize: 'var(--fs-micro)',
+              letterSpacing: '0.18em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-mute)',
+              fontWeight: 500,
+            }}
+          >
             NeuroWiki Graph
           </p>
-          <p className="text-[10px] mt-0.5" style={{ color: 'rgba(222,219,200,0.2)' }}>
-            {graphData.nodes.length} pages · {graphData.links.length} connections
+          <p className="font-mono mt-1.5" style={{ fontSize: 'var(--fs-micro)', color: 'var(--ink-faint)', letterSpacing: '0.04em' }}>
+            <span style={{ color: 'var(--ink-soft)' }}>{graphData.nodes.length}</span> pages
+            <span style={{ margin: '0 6px', color: 'var(--ink-faint)' }}>·</span>
+            <span style={{ color: 'var(--ink-soft)' }}>{graphData.links.length}</span> connections
           </p>
         </div>
       )}

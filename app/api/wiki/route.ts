@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { hydra } from '@/lib/hydra'
+import { listAllKnowledgeRaw } from '@/lib/hydra-fetch'
 
 export const revalidate = 60
 
@@ -9,28 +9,7 @@ export async function GET(req: Request) {
   const onlyDiary = searchParams.get('onlyDiary') === '1'
 
   try {
-    const items: any[] = []
-    let page = 1
-    try {
-      while (true) {
-        const response = (await hydra.fetch.listData({
-          tenant_id: 'default',
-          kind: 'knowledge',
-          page,
-          page_size: 100,
-        })) as any
-        const batch: any[] = response?.sources ?? []
-        items.push(...batch)
-        if (batch.length < 100) break
-        page++
-      }
-    } catch (e: any) {
-      if (e.message?.includes('Tenant default does not exist') || e.status === 404) {
-        console.warn('Tenant default does not exist yet.')
-      } else {
-        throw e
-      }
-    }
+    const items = await listAllKnowledgeRaw('default')
 
     const allPages = items.map((item: any) => ({
       slug: (item.document_metadata?.slug as string) || item.id,

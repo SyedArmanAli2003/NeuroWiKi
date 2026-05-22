@@ -138,6 +138,55 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
+
+  /* Aliases used by /wiki + /diary JSX */
+  --ink-strong: #ffffff;
+  --ink-soft: rgba(245, 245, 244, 0.7);
+  --ink-mute: rgba(245, 245, 244, 0.5);
+  --ink-faint: rgba(245, 245, 244, 0.22);
+  --hair: rgba(255, 255, 255, 0.07);
+  --hair-strong: rgba(255, 255, 255, 0.14);
+  --surface: #0c0c0e;
+  --surface-hover: #131316;
+  --surface-hi: #18181b;
+
+  --warm: #f4c77b;
+  --warm-soft: rgba(244, 199, 123, 0.7);
+
+  /* Type scale aliases */
+  --fs-micro: 10px;
+  --fs-kicker: 11px;
+  --fs-meta: 12px;
+  --fs-nav: 13px;
+  --fs-body-sm: 14px;
+  --fs-body: 15px;
+  --fs-body-lg: 17px;
+  --fs-quote: 20px;
+  --fs-h1: 56px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   APP CARD — used on /wiki grid
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.app-card {
+  background: var(--surface);
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  padding: 18px 18px 14px;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.app-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--hair-strong);
+  transform: translateY(-1px);
+}
+
+.kicker-rule {
+  display: inline-block;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hair);
 }
 
 @layer base {

@@ -1,6 +1,47 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, Fragment } from 'react'
+import Link from 'next/link'
 import { SectionHeader } from './SectionHeader'
+
+function slugify(title: string): string {
+  return title.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-')
+}
+
+function renderWithWikilinks(text: string) {
+  const parts: React.ReactNode[] = []
+  const re = /\[\[([^\]]+)\]\]/g
+  let last = 0
+  let m: RegExpExecArray | null
+  let i = 0
+  while ((m = re.exec(text))) {
+    if (m.index > last) parts.push(<Fragment key={`t${i}`}>{text.slice(last, m.index)}</Fragment>)
+    const label = m[1].includes('|') ? m[1].split('|')[1] : m[1]
+    const target = m[1].includes('|') ? m[1].split('|')[0] : m[1]
+    parts.push(
+      <Link
+        key={`l${i}`}
+        href={`/wiki/${slugify(target)}`}
+        className="inline-flex items-center rounded transition-colors"
+        style={{
+          padding: '0 6px',
+          margin: '0 1px',
+          fontSize: '0.92em',
+          color: '#C7B8FF',
+          background: 'rgba(199,184,255,0.06)',
+          border: '1px solid rgba(199,184,255,0.18)',
+          textDecoration: 'none',
+          lineHeight: 1.4,
+        }}
+      >
+        {label}
+      </Link>
+    )
+    last = m.index + m[0].length
+    i++
+  }
+  if (last < text.length) parts.push(<Fragment key="tail">{text.slice(last)}</Fragment>)
+  return parts
+}
 
 interface PastDay {
   date: string
@@ -170,8 +211,8 @@ export function DiarySpine() {
                 disabled={b.quiet}
                 className="grid items-baseline w-full text-left"
                 style={{
-                  gridTemplateColumns: '180px 1fr auto',
-                  gap: '24px',
+                  gridTemplateColumns: '140px 1fr auto',
+                  gap: '20px',
                   padding: '18px 0',
                   background: 'transparent',
                   border: 'none',
@@ -208,7 +249,7 @@ export function DiarySpine() {
               {open && !b.quiet && (
                 <div style={{ padding: '4px 0 20px 0' }}>
                   {loadingKey === b.key && !entries ? (
-                    <p className="kicker" style={{ paddingLeft: '180px' }}>loading…</p>
+                    <p className="kicker" style={{ paddingLeft: '140px' }}>loading…</p>
                   ) : (
                     <CaptureList entries={entries ?? []} range={range} />
                   )}
@@ -231,11 +272,11 @@ export function DiarySpine() {
 }
 
 function CaptureList({ entries, range }: { entries: DiaryEntry[]; range: Range }) {
-  if (!entries.length) return <p className="kicker" style={{ paddingLeft: '180px' }}>no captures</p>
+  if (!entries.length) return <p className="kicker" style={{ paddingLeft: '140px' }}>no captures</p>
 
   if (range === 'day') {
     return (
-      <ul style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '180px' }}>
+      <ul style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '140px', paddingRight: '8px' }}>
         {entries.map((e) => <CaptureRow key={e.id} entry={e} showDate={false} />)}
       </ul>
     )
@@ -251,7 +292,7 @@ function CaptureList({ entries, range }: { entries: DiaryEntry[]; range: Range }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
       {dates.map((d) => (
-        <div key={d} className="grid" style={{ gridTemplateColumns: '180px 1fr', gap: '24px' }}>
+        <div key={d} className="grid" style={{ gridTemplateColumns: '140px 1fr', gap: '20px' }}>
           <span className="font-mono" style={{ fontSize: 'var(--fs-kicker)', color: 'var(--ink-mute)', letterSpacing: '0.02em' }}>{d}</span>
           <ul style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {byDate.get(d)!.map((e) => <CaptureRow key={e.id} entry={e} showDate={false} />)}
@@ -270,8 +311,8 @@ function CaptureRow({ entry }: { entry: DiaryEntry; showDate: boolean }) {
         {entry.title && (
           <div className="serif" style={{ fontSize: 'var(--fs-body)', color: 'var(--ink-strong)', letterSpacing: '-0.005em' }}>{entry.title}</div>
         )}
-        <p style={{ fontSize: 'var(--fs-body-sm)', lineHeight: 1.5, color: 'var(--ink)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {entry.text}
+        <p style={{ fontSize: 'var(--fs-body-sm)', lineHeight: 1.6, color: 'var(--ink)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {renderWithWikilinks(entry.text)}
         </p>
       </div>
     </li>
