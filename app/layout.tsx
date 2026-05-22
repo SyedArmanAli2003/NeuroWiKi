@@ -1,4 +1,5 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
+import { Inter } from 'next/font/google'
 import './globals.css'
 import { Toaster } from 'sonner'
 import { HoverSidebar } from '@/components/layout/HoverSidebar'
@@ -7,15 +8,28 @@ import { Topbar } from '@/components/layout/Topbar'
 import { PageTransition } from '@/components/PageTransition'
 import { Footer } from '@/components/Footer'
 
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-sans',
+})
+
 export const metadata: Metadata = {
-  title: 'NeuroWiki',
-  description: 'Your personal AI-powered Wikipedia',
+  title: 'NeuroWiki — Your Personal Memory Agent',
+  description: 'An AI-powered personal knowledge base that stores, connects, and retrieves your memories intelligently.',
+  keywords: ['memory', 'AI', 'knowledge base', 'personal wiki', 'second brain'],
+}
+
+export const viewport: Viewport = {
+  themeColor: '#09090b',
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="bg-black text-white antialiased">
+    <html lang="en" className={`${inter.variable} bg-background`}>
+      <body className="bg-[#09090b] text-[#f5f5f4] antialiased">
         <HoverSidebar />
         <Topbar />
         <BackButton />
@@ -31,11 +45,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           position="bottom-right"
           toastOptions={{
             style: {
-              background:   '#151515',
-              border:       '1px solid rgba(255,255,255,0.08)',
-              color:        '#E1E0CC',
-              fontSize:     '12px',
+              background: '#111113',
+              border: '1px solid rgba(255,255,255,0.06)',
+              color: '#f5f5f4',
+              fontSize: '13px',
               borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
             },
           }}
         />

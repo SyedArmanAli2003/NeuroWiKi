@@ -1,13 +1,19 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { Search, Sparkles, Clock, Copy, Check, Clipboard, BookmarkPlus, ArrowRight, Loader2 } from 'lucide-react'
+import { 
+  Search, Sparkles, Clock, Copy, Check, 
+  ArrowRight, Loader2, BookmarkPlus, Send
+} from 'lucide-react'
 import { toast } from 'sonner'
-import { FadeUp } from '@/components/animations/FadeUp'
 import { TypeBadge } from '@/components/TypeBadge'
-import { WordsPullUp } from '@/components/animations/WordsPullUp'
 
-interface Page { slug: string; title: string; summary: string; type: string }
+interface Page {
+  slug: string
+  title: string
+  summary: string
+  type: string
+}
 
 function highlightText(text: string, query: string): React.ReactNode {
   if (!query.trim()) return text
@@ -15,7 +21,15 @@ function highlightText(text: string, query: string): React.ReactNode {
   const parts = text.split(regex)
   return parts.map((part, i) =>
     regex.test(part) ? (
-      <mark key={i} style={{ background: 'rgba(222,219,200,0.2)', color: '#E1E0CC', borderRadius: '2px' }}>
+      <mark 
+        key={i} 
+        style={{ 
+          background: 'rgba(212, 165, 116, 0.2)', 
+          color: '#f5f5f4', 
+          borderRadius: 2,
+          padding: '0 2px',
+        }}
+      >
         {part}
       </mark>
     ) : part
@@ -26,7 +40,7 @@ const MAX_HISTORY = 5
 
 export default function SearchPage() {
   const [mounted, setMounted] = useState(false)
-  const [mode, setMode] = useState<'search' | 'ask'>('search')
+  const [mode, setMode] = useState<'search' | 'ask'>('ask')
   const [query, setQuery] = useState('')
   const [allPages, setAllPages] = useState<Page[]>([])
   const [filtered, setFiltered] = useState<Page[]>([])
@@ -38,7 +52,6 @@ export default function SearchPage() {
   const [savedSlug, setSavedSlug] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Mount guard + load pages + history
   useEffect(() => {
     setMounted(true)
     fetch('/api/wiki').then(r => r.json()).then(data => setAllPages(data.pages || [])).catch(() => {})
@@ -48,7 +61,6 @@ export default function SearchPage() {
     } catch {}
   }, [])
 
-  // Filter pages
   useEffect(() => {
     if (mode !== 'search' || !query.trim()) { setFiltered([]); return }
     const q = query.toLowerCase()
@@ -58,7 +70,7 @@ export default function SearchPage() {
           p.title.toLowerCase().includes(q) ||
           (p.summary || '').toLowerCase().includes(q)
         )
-        .slice(0, 8)
+        .slice(0, 6)
     )
   }, [query, allPages, mode])
 
@@ -96,7 +108,7 @@ export default function SearchPage() {
         if (chunk) setAnswer(prev => prev + chunk)
       }
     } catch (err) {
-      toast.error('Search failed. Please try again.')
+      toast.error('Failed to get answer. Please try again.')
       console.error(err)
     } finally {
       setLoading(false)
@@ -115,9 +127,9 @@ export default function SearchPage() {
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setSavedSlug(data.slug)
-      toast.success('Successfully compiled into Wiki!')
+      toast.success('Saved to your Wiki!')
     } catch (e: any) {
-      toast.error(e.message || 'Failed to compile to Wiki')
+      toast.error(e.message || 'Failed to save')
     } finally {
       setSavingToWiki(false)
     }
@@ -126,146 +138,151 @@ export default function SearchPage() {
   const handleCopy = async () => {
     await navigator.clipboard.writeText(answer)
     setCopied(true)
-    toast.success('Answer copied')
+    toast.success('Copied to clipboard')
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const handlePaste = async () => {
-    try {
-      const text = await navigator.clipboard.readText()
-      setQuery(text)
-      inputRef.current?.focus()
-    } catch {
-      toast.error('Could not read clipboard')
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && mode === 'ask' && !e.shiftKey) {
+      e.preventDefault()
+      handleAsk()
     }
   }
 
   if (!mounted) {
     return (
-      <div className="bg-black min-h-screen flex flex-col items-center pt-16 px-4">
-        <div className="text-center mb-10">
-          <h1 className="font-medium leading-[0.9]"
-            style={{ fontSize: 'clamp(2.5rem, 6vw, 5rem)', color: '#E1E0CC' }}>
-            What do you know?
-          </h1>
-        </div>
+      <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center px-4">
+        <div className="w-6 h-6 border-2 border-[rgba(245,245,244,0.2)] border-t-[#f5f5f4] rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="bg-black min-h-screen">
-      <div className="flex flex-col items-center pt-16 px-4 pb-20">
-
+    <div className="min-h-screen bg-[#09090b]">
+      <div className="max-w-2xl mx-auto px-4 pt-20 pb-32">
+        {/* Header */}
         <div className="text-center mb-10">
-          <h1 className="font-medium leading-[0.9]"
-            style={{ fontSize: 'clamp(2.5rem, 6vw, 5rem)', color: '#E1E0CC' }}>
-            <WordsPullUp text="What do you know?" />
+          <h1 
+            className="text-3xl sm:text-4xl font-medium tracking-tight mb-3"
+            style={{ color: '#f5f5f4' }}
+          >
+            Ask your memory
           </h1>
+          <p className="text-sm" style={{ color: 'rgba(245, 245, 244, 0.5)' }}>
+            Search your knowledge or ask AI to synthesize an answer
+          </p>
         </div>
 
-        {/* Mode toggle — no animation wrapper to avoid hydration mismatch */}
-        <div className="flex gap-1 mb-5 p-1 rounded-full"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          {(['search', 'ask'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => { setMode(m); setAnswer(''); setFiltered([]) }}
-              className="flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] tracking-wider uppercase transition-all duration-200"
-              style={{
-                background: mode === m ? '#DEDBC8' : 'transparent',
-                color: mode === m ? '#000' : 'rgba(222,219,200,0.4)',
-              }}
-            >
-              {m === 'search' ? <Search size={11} /> : <Sparkles size={11} />}
-              {m === 'search' ? 'Search' : 'Ask AI'}
-            </button>
-          ))}
+        {/* Mode toggle */}
+        <div className="flex justify-center mb-6">
+          <div 
+            className="inline-flex p-1 rounded-lg"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            {(['ask', 'search'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => { setMode(m); setAnswer(''); setFiltered([]) }}
+                className="flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-colors duration-150"
+                style={{
+                  background: mode === m ? 'rgba(255,255,255,0.08)' : 'transparent',
+                  color: mode === m ? '#f5f5f4' : 'rgba(245, 245, 244, 0.4)',
+                }}
+              >
+                {m === 'ask' ? <Sparkles size={14} /> : <Search size={14} />}
+                {m === 'ask' ? 'Ask AI' : 'Search'}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Search bar — no FadeUp to avoid hydration issues */}
-        <div className="w-full max-w-xl">
+        {/* Search input */}
+        <div className="relative">
           <div
-            className="flex items-center gap-3 px-5 py-3.5 rounded-full transition-all duration-200"
+            className="flex items-center gap-3 rounded-xl transition-colors duration-150"
             style={{
-              background: 'rgba(255,255,255,0.04)',
+              padding: '14px 18px',
+              background: 'rgba(255,255,255,0.03)',
               border: '1px solid rgba(255,255,255,0.08)',
             }}
           >
-            {mode === 'search'
-              ? <Search size={14} style={{ color: 'rgba(222,219,200,0.3)', flexShrink: 0 }} />
-              : <Sparkles size={14} style={{ color: 'rgba(222,219,200,0.3)', flexShrink: 0 }} />
-            }
+            {mode === 'ask' ? (
+              <Sparkles size={18} style={{ color: 'rgba(212, 165, 116, 0.6)', flexShrink: 0 }} />
+            ) : (
+              <Search size={18} style={{ color: 'rgba(245, 245, 244, 0.3)', flexShrink: 0 }} />
+            )}
             <input
               ref={inputRef}
               value={query}
               onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && mode === 'ask' && handleAsk()}
-              placeholder={mode === 'search' ? 'Search your wiki...' : 'Ask anything...'}
-              className="flex-1 bg-transparent outline-none text-sm"
-              style={{ color: '#DEDBC8' }}
+              onKeyDown={handleKeyDown}
+              placeholder={mode === 'ask' ? 'What would you like to know?' : 'Search your memories...'}
+              className="flex-1 bg-transparent outline-none text-[15px]"
+              style={{ color: '#f5f5f4' }}
               autoFocus
             />
-            {/* Paste button */}
-            <button
-              onClick={handlePaste}
-              className="opacity-30 hover:opacity-70 transition-opacity flex-shrink-0"
-              title="Paste from clipboard"
-            >
-              <Clipboard size={13} color="#DEDBC8" />
-            </button>
             {mode === 'ask' && (
               <button
                 onClick={() => handleAsk()}
                 disabled={loading || !query.trim()}
-                className="bg-[#DEDBC8] text-black text-[10px] font-medium px-3 py-1.5 rounded-full hover:opacity-90 transition disabled:opacity-40 flex-shrink-0"
+                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-150 disabled:opacity-30"
+                style={{ 
+                  background: query.trim() ? '#f5f5f4' : 'rgba(255,255,255,0.05)',
+                }}
               >
-                Ask
+                {loading ? (
+                  <Loader2 size={14} className="animate-spin" style={{ color: '#09090b' }} />
+                ) : (
+                  <Send size={14} style={{ color: query.trim() ? '#09090b' : 'rgba(245,245,244,0.3)' }} />
+                )}
               </button>
             )}
           </div>
         </div>
 
-        {/* Search results with highlighting */}
+        {/* Search results */}
         {mode === 'search' && filtered.length > 0 && (
-          <div className="w-full max-w-xl mt-3 space-y-2">
-            {filtered.map((page, i) => (
-              <FadeUp key={page.slug} delay={i * 0.04}>
-                <Link href={`/wiki/${page.slug}`}>
-                  <div
-                    className="rounded-2xl p-4 hover:bg-white/4 transition-all duration-200"
-                    style={{ border: '1px solid rgba(255,255,255,0.06)' }}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <TypeBadge type={page.type} />
-                    </div>
-                    <h3 className="text-sm font-medium mb-1" style={{ color: '#E1E0CC' }}>
-                      {highlightText(page.title, query)}
-                    </h3>
-                    <p className="text-[11px] leading-relaxed line-clamp-2"
-                      style={{ color: 'rgba(222,219,200,0.4)' }}>
-                      {highlightText(page.summary || '', query)}
-                    </p>
+          <div className="mt-4 space-y-2">
+            {filtered.map((page) => (
+              <Link key={page.slug} href={`/wiki/${page.slug}`}>
+                <div className="surface-card p-4 group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TypeBadge type={page.type} />
                   </div>
-                </Link>
-              </FadeUp>
+                  <h3 
+                    className="text-[14px] font-medium mb-1 group-hover:text-[#f5f5f4] transition-colors duration-150"
+                    style={{ color: 'rgba(245, 245, 244, 0.9)' }}
+                  >
+                    {highlightText(page.title, query)}
+                  </h3>
+                  <p 
+                    className="text-[12px] leading-relaxed line-clamp-2"
+                    style={{ color: 'rgba(245, 245, 244, 0.4)' }}
+                  >
+                    {highlightText(page.summary || '', query)}
+                  </p>
+                </div>
+              </Link>
             ))}
           </div>
         )}
 
+        {/* No search results */}
         {mode === 'search' && query && filtered.length === 0 && (
-          <FadeUp delay={0.1} className="w-full max-w-xl mt-4 text-center py-8">
-            <p className="text-sm" style={{ color: 'rgba(222,219,200,0.3)' }}>
-              No pages found. Try switching to Ask AI mode.
+          <div className="mt-8 text-center">
+            <p className="text-[13px]" style={{ color: 'rgba(245, 245, 244, 0.4)' }}>
+              No memories found. Try asking AI instead.
             </p>
-          </FadeUp>
+          </div>
         )}
 
         {/* Query history */}
-        {mode === 'ask' && !query && history.length > 0 && (
-          <FadeUp delay={0.2} className="w-full max-w-xl mt-4">
-            <p className="text-[9px] tracking-[0.3em] uppercase mb-3"
-              style={{ color: 'rgba(222,219,200,0.25)' }}>
+        {mode === 'ask' && !query && !answer && history.length > 0 && (
+          <div className="mt-8">
+            <p 
+              className="text-[11px] font-medium tracking-wider uppercase mb-3"
+              style={{ color: 'rgba(245, 245, 244, 0.3)' }}
+            >
               Recent questions
             </p>
             <div className="space-y-1">
@@ -273,121 +290,148 @@ export default function SearchPage() {
                 <button
                   key={i}
                   onClick={() => handleAsk(h)}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left hover:bg-white/4 transition-colors group"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors duration-150 hover:bg-[rgba(255,255,255,0.03)]"
                 >
-                  <Clock size={12} style={{ color: 'rgba(222,219,200,0.25)', flexShrink: 0 }} />
-                  <span className="text-[12px] truncate group-hover:opacity-100 transition-opacity"
-                    style={{ color: 'rgba(222,219,200,0.5)' }}>
+                  <Clock size={14} style={{ color: 'rgba(245, 245, 244, 0.2)', flexShrink: 0 }} />
+                  <span 
+                    className="text-[13px] truncate"
+                    style={{ color: 'rgba(245, 245, 244, 0.5)' }}
+                  >
                     {h}
                   </span>
                 </button>
               ))}
             </div>
-          </FadeUp>
+          </div>
         )}
 
         {/* AI Answer */}
         {mode === 'ask' && (answer || loading) && (
-          <FadeUp delay={0.1} className="w-full max-w-xl mt-6">
+          <div className="mt-6">
             <div
-              className="rounded-2xl p-6"
+              className="rounded-xl p-5"
               style={{
-                background: 'rgba(255,255,255,0.03)',
+                background: 'rgba(255,255,255,0.02)',
                 border: '1px solid rgba(255,255,255,0.06)',
               }}
             >
+              {/* Header */}
               <div className="flex items-center justify-between mb-4">
-                <p className="text-[9px] tracking-[0.3em] uppercase"
-                  style={{ color: 'rgba(222,219,200,0.25)' }}>Answer</p>
-                {answer && (
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} style={{ color: '#d4a574' }} />
+                  <span 
+                    className="text-[11px] font-medium tracking-wider uppercase"
+                    style={{ color: 'rgba(245, 245, 244, 0.4)' }}
+                  >
+                    Answer
+                  </span>
+                </div>
+                {answer && !loading && (
                   <button
                     onClick={handleCopy}
-                    className="flex items-center gap-1.5 text-[10px] hover:opacity-100 transition-opacity"
-                    style={{ color: 'rgba(222,219,200,0.35)' }}
+                    className="flex items-center gap-1.5 text-[11px] transition-opacity duration-150 hover:opacity-80"
+                    style={{ color: 'rgba(245, 245, 244, 0.4)' }}
                   >
-                    {copied ? <Check size={11} /> : <Copy size={11} />}
+                    {copied ? <Check size={12} /> : <Copy size={12} />}
                     {copied ? 'Copied' : 'Copy'}
                   </button>
                 )}
               </div>
 
+              {/* Loading state */}
               {loading && !answer && (
-                <div className="flex gap-1.5">
-                  {[0, 1, 2].map(i => (
-                    <span
-                      key={i}
-                      className="w-1.5 h-1.5 rounded-full animate-bounce"
-                      style={{
-                        background: '#DEDBC8',
-                        opacity: 0.5,
-                        animationDelay: `${i * 0.15}s`,
-                      }}
-                    />
-                  ))}
+                <div className="flex items-center gap-2 py-2">
+                  <div className="flex gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#d4a574] animate-pulse" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#d4a574] animate-pulse" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#d4a574] animate-pulse" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  <span className="text-[12px]" style={{ color: 'rgba(245, 245, 244, 0.4)' }}>
+                    Thinking...
+                  </span>
                 </div>
               )}
 
+              {/* Answer content */}
               {answer && (
                 <p
-                  className="text-sm leading-relaxed whitespace-pre-wrap"
-                  style={{ color: 'rgba(222,219,200,0.8)' }}
+                  className="text-[14px] leading-relaxed whitespace-pre-wrap"
+                  style={{ color: 'rgba(245, 245, 244, 0.8)' }}
                 >
                   {answer}
                 </p>
               )}
             </div>
 
+            {/* Save to Wiki */}
             {!loading && answer && (
-              <FadeUp delay={0.2} className="mt-4">
-                <div className="bg-[#111] border border-white/5 rounded-2xl p-5 flex flex-col gap-3 relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/0 via-emerald-500/5 to-emerald-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                  
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-medium mb-1" style={{ color: '#E1E0CC' }}>
-                        Save as Wiki Page
-                      </p>
-                      <p className="text-[11px] leading-relaxed max-w-[80%]" style={{ color: 'rgba(222,219,200,0.45)' }}>
-                        Compile this Q&A into a permanent node in your knowledge graph.
-                      </p>
-                    </div>
-                    {savedSlug ? (
-                      <Link
-                        href={`/wiki/${savedSlug}`}
-                        className="flex items-center gap-1.5 bg-emerald-950/40 text-emerald-400 border border-emerald-900/50 px-4 py-2 rounded-full text-[11px] font-medium tracking-wide hover:bg-emerald-900/40 transition-colors"
-                      >
-                        View Page <ArrowRight size={12} />
-                      </Link>
-                    ) : (
-                      <button
-                        onClick={handleSaveToWiki}
-                        disabled={savingToWiki}
-                        className="flex items-center gap-2 bg-[#DEDBC8] text-black px-4 py-2 rounded-full text-[11px] font-medium tracking-wide hover:opacity-90 transition-opacity disabled:opacity-50"
-                      >
-                        {savingToWiki ? (
-                          <><Loader2 size={12} className="animate-spin" /> Saving...</>
-                        ) : (
-                          <><BookmarkPlus size={13} /> Compile to Wiki</>
-                        )}
-                      </button>
-                    )}
+              <div className="mt-4">
+                <div 
+                  className="rounded-xl p-4 flex items-center justify-between"
+                  style={{ 
+                    background: 'rgba(212, 165, 116, 0.05)',
+                    border: '1px solid rgba(212, 165, 116, 0.15)',
+                  }}
+                >
+                  <div>
+                    <p className="text-[13px] font-medium" style={{ color: '#f5f5f4' }}>
+                      Save to Wiki
+                    </p>
+                    <p className="text-[11px] mt-0.5" style={{ color: 'rgba(245, 245, 244, 0.5)' }}>
+                      Turn this into a permanent memory
+                    </p>
                   </div>
+                  {savedSlug ? (
+                    <Link
+                      href={`/wiki/${savedSlug}`}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-medium transition-colors duration-150"
+                      style={{ 
+                        background: 'rgba(212, 165, 116, 0.15)',
+                        color: '#d4a574',
+                      }}
+                    >
+                      View <ArrowRight size={12} />
+                    </Link>
+                  ) : (
+                    <button
+                      onClick={handleSaveToWiki}
+                      disabled={savingToWiki}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-medium transition-opacity duration-150 disabled:opacity-50"
+                      style={{ 
+                        background: '#f5f5f4',
+                        color: '#09090b',
+                      }}
+                    >
+                      {savingToWiki ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <BookmarkPlus size={14} />
+                          Save
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
-              </FadeUp>
+              </div>
             )}
 
+            {/* New question */}
             {answer && (
-              <FadeUp delay={0.2}>
+              <div className="mt-4 text-center">
                 <button
                   onClick={() => { setAnswer(''); setQuery(''); inputRef.current?.focus() }}
-                  className="mt-3 text-[11px] tracking-wider uppercase hover:opacity-100 transition-opacity"
-                  style={{ color: 'rgba(222,219,200,0.3)' }}
+                  className="text-[12px] transition-opacity duration-150 hover:opacity-80"
+                  style={{ color: 'rgba(245, 245, 244, 0.4)' }}
                 >
                   Ask another question
                 </button>
-              </FadeUp>
+              </div>
             )}
-          </FadeUp>
+          </div>
         )}
       </div>
     </div>

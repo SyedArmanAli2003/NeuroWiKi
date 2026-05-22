@@ -82,18 +82,24 @@ export async function POST(req: Request) {
     )
     .join('\n\n---\n\n')
 
-  const systemPrompt = `You are a wiki assistant that ONLY answers from the provided wiki pages.
+  const systemPrompt = `You are a wiki assistant that ONLY answers from the provided wiki pages below.
 Never use outside knowledge.
 Always cite which page your answer comes from using format: (Source: Page N — Title)
 If the answer is not in the wiki, say "This isn't covered in the wiki yet. Try adding more sources."
-Keep answers concise and factual.`
+Keep answers concise and factual.
+If the user's input is a single word or short topic (not a full question), treat it as a request to summarize what the wiki says about that topic, drawing from every relevant page in the context. Do not ask the user to clarify — answer directly using the wiki pages.`
+
+  const wordCount = question.trim().split(/\s+/).length
+  const userTurn = wordCount <= 3
+    ? `Topic: "${question}"\n\nUsing only the wiki pages above, summarize what is known about this topic. Pull from every relevant page. Cite sources.`
+    : `Question: ${question}\n\nUsing only the wiki pages above, answer the question. Cite sources.`
 
   console.log(`[query] llm call strategy=${recallStrategy} chunks=${contextChunks.length} contextLen=${context.length} prep=${Date.now() - reqStart}ms`)
 
   const stream = loggedStreamText('query', {
     model: llm(),
     system: systemPrompt,
-    prompt: `Question: ${question}\n\nWiki context:\n${context}`,
+    prompt: `WIKI PAGES (your only source of truth):\n\n${context}\n\n---\n\n${userTurn}`,
     maxOutputTokens: 500,
   })
 

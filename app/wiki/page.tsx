@@ -43,7 +43,7 @@ function PageCard({ page, index }: { page: Page; index: number }) {
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: Math.min(index * 0.025, 0.4), ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.18), ease: [0.16, 1, 0.3, 1] }}
     >
       <Link href={`/wiki/${page.slug}`} className="block app-card flex flex-col" style={{ minHeight: '160px', height: '100%' }}>
         <div className="flex items-center justify-between mb-3">
@@ -154,50 +154,54 @@ export default function WikiBrowserPage() {
     <div className="app-canvas min-h-screen" style={{ background: '#000' }}>
       <div className="mx-auto px-7 lg:px-10" style={{ maxWidth: '1200px' }}>
         {/* Hero */}
-        <header className="relative" style={{ paddingTop: '80px', paddingBottom: '40px', borderBottom: '1px solid var(--hair)' }}>
-          <a
-            href="/api/export"
-            download="neurowiki-export.zip"
-            className="absolute right-0 flex items-center gap-2 rounded-full transition-all duration-200 hover:bg-white/[0.04]"
-            style={{
-              top: '80px',
-              padding: '7px 14px',
-              fontSize: 'var(--fs-kicker)',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'var(--ink-mute)',
-              border: '1px solid var(--hair)',
-            }}
-          >
-            <Download size={12} />
-            Export
-          </a>
+        <header style={{ paddingTop: '80px', paddingBottom: '40px', borderBottom: '1px solid var(--hair)' }}>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <h1
+                style={{
+                  fontSize: 'var(--fs-h1)',
+                  fontWeight: 400,
+                  lineHeight: 1,
+                  letterSpacing: '-0.03em',
+                  color: 'var(--ink-strong)',
+                }}
+              >
+                Everything you know.
+              </h1>
+              <p className="serif mt-3" style={{ fontSize: 'var(--fs-quote)', color: 'var(--ink-soft)', letterSpacing: '-0.005em' }}>
+                Compiled. Connected. Yours.
+              </p>
+            </div>
 
-          <h1
-            style={{
-              fontSize: 'var(--fs-h1)',
-              fontWeight: 400,
-              lineHeight: 1,
-              letterSpacing: '-0.03em',
-              color: 'var(--ink-strong)',
-            }}
-          >
-            Everything you know.
-          </h1>
-          <p className="serif mt-3" style={{ fontSize: 'var(--fs-quote)', color: 'var(--ink-soft)', letterSpacing: '-0.005em' }}>
-            Compiled. Connected. Yours.
-          </p>
+            <a
+              href="/api/export"
+              download="neurowiki-export.zip"
+              className="flex items-center gap-2 rounded-full transition-all duration-200 hover:bg-white/[0.04] shrink-0"
+              style={{
+                padding: '7px 14px',
+                fontSize: 'var(--fs-kicker)',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--ink-mute)',
+                border: '1px solid var(--hair)',
+              }}
+            >
+              <Download size={12} />
+              Export
+            </a>
+          </div>
 
-          <div className="flex flex-wrap items-center gap-4 mt-6" style={{ fontSize: 'var(--fs-kicker)', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
+          {/* <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-6" style={{ fontSize: 'var(--fs-kicker)', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
             <span><span style={{ color: 'var(--ink-strong)' }}>{pages.length}</span> pages</span>
             <span style={{ color: 'var(--ink-faint)' }}>·</span>
             <span><span style={{ color: 'var(--ink-strong)' }}>{captures.length}</span> captures</span>
-            {TYPE_ORDER.filter((t) => counts[t] && tab === 'pages').slice(0, 3).map((t) => (
-              <span key={t} style={{ color: 'var(--ink-faint)' }}>
-                · <span style={{ color: 'var(--ink-soft)' }}>{counts[t]}</span> {t}{counts[t] > 1 ? 's' : ''}
+            {tab === 'pages' && TYPE_ORDER.filter((t) => counts[t]).map((t) => (
+              <span key={t} className="flex items-center gap-x-4">
+                <span style={{ color: 'var(--ink-faint)' }}>·</span>
+                <span><span style={{ color: 'var(--ink-soft)' }}>{counts[t]}</span> {t}{counts[t] > 1 ? 's' : ''}</span>
               </span>
             ))}
-          </div>
+          </div> */}
         </header>
 
         {/* Tabs */}

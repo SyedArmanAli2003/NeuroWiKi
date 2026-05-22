@@ -18,7 +18,7 @@ export function WikilinkMenu({ open, pages, activeIdx, onPick, onHover }: Props)
 
   return (
     <AnimatePresence>
-      {open && pages.length > 0 && (
+      {open && (
         <motion.div
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
@@ -32,6 +32,12 @@ export function WikilinkMenu({ open, pages, activeIdx, onPick, onHover }: Props)
             boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
           }}
         >
+          {pages.length === 0 && (
+            <div style={{ padding: '14px', fontSize: 'var(--fs-body-sm)', color: 'var(--ink-mute)' }}>
+              No wiki pages yet. Add one via /ingest.
+            </div>
+          )}
+
           {pagesGroup.length > 0 && (
             <>
               <div className="kicker" style={{ padding: '10px 14px 6px' }}>Pages · {pagesGroup.length}</div>
