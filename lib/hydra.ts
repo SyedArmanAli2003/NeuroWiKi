@@ -1,7 +1,7 @@
 import { HydraDBClient } from '@hydradb/sdk'
 
 if (!process.env.HYDRADB_API_KEY) {
-  throw new Error("'HydraDB is not reachable")
+  console.warn("'HydraDB is not reachable - HYDRADB_API_KEY missing")
 }
 
 export const hydra = new HydraDBClient({
