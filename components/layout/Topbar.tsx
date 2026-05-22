@@ -1,8 +1,8 @@
 'use client'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
-import { Search, Command, LogOut, User } from 'lucide-react'
+import { Search, Command, LogOut } from 'lucide-react'
 import { useSession, signOut } from 'next-auth/react'
 import { CommandModal } from '@/components/CommandModal'
 
@@ -14,37 +14,31 @@ const navItems = [
 ]
 
 export function Topbar() {
-  const pathname            = usePathname()
-  const router              = useRouter()
+  const pathname = usePathname()
   const { data: session, status } = useSession()
-  const [cmdOpen, setCmdOpen]   = useState(false)
+  const [cmdOpen,  setCmdOpen]  = useState(false)
   const [userOpen, setUserOpen] = useState(false)
-  const dropdownRef             = useRef<HTMLDivElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Keyboard shortcut
+  // ⌘K shortcut
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setCmdOpen(true)
-      }
+    const h = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(true) }
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
   }, [])
 
   // Close dropdown on outside click
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setUserOpen(false)
-      }
+    const h = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setUserOpen(false)
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
   }, [])
 
-  // Don't show topbar on auth pages
+  // Hide on auth pages entirely
   if (pathname?.startsWith('/auth')) return null
 
   const isHome = pathname === '/'
@@ -52,37 +46,62 @@ export function Topbar() {
   return (
     <>
       <header
-        className={`${isHome ? 'absolute' : 'sticky'} top-0 left-0 right-0 z-30 flex items-center justify-between`}
         style={{
-          height: 56,
-          padding: '0 24px',
-          background: isHome ? 'transparent' : 'rgba(9, 9, 11, 0.85)',
+          position: isHome ? 'absolute' : 'sticky',
+          top: 0, left: 0, right: 0,
+          zIndex: 30,
+          height: 52,
+          display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
+          alignItems: 'center',
+          padding: '0 20px',
+          background: isHome ? 'transparent' : 'rgba(9,9,11,0.88)',
           backdropFilter: isHome ? 'none' : 'blur(16px)',
           WebkitBackdropFilter: isHome ? 'none' : 'blur(16px)',
           borderBottom: isHome ? 'none' : '1px solid rgba(255,255,255,0.04)',
         }}
       >
-        {/* Brand */}
-        <Link href="/" className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
-          <span className="text-lg font-medium" style={{ color: '#f5f5f4' }}>N</span>
-          <span
-            className="hidden sm:inline text-xs font-medium tracking-widest uppercase"
-            style={{ color: 'rgba(245, 245, 244, 0.5)' }}
+        {/* ── Left: Brand ───────────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <Link
+            href="/"
+            style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 1, transition: 'opacity .15s' }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
           >
-            NeuroWiki
-          </span>
-        </Link>
+            <span style={{ fontSize: 17, fontWeight: 500, color: '#f5f5f4' }}>N</span>
+            <span
+              style={{
+                fontSize: 11, fontWeight: 500, letterSpacing: '0.2em',
+                textTransform: 'uppercase', color: 'rgba(245,245,244,0.45)',
+              }}
+              className="hidden sm:inline"
+            >
+              NeuroWiki
+            </span>
+          </Link>
+        </div>
 
-        {/* Navigation */}
-        <nav className="hidden md:flex items-center gap-1">
+        {/* ── Center: Nav ───────────────────────────────── */}
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 2 }} className="hidden md:flex">
           {navItems.map(({ label, href }) => {
             const active = pathname === href || (href !== '/' && pathname.startsWith(href))
             return (
               <Link
                 key={href}
                 href={href}
-                className="px-3 py-1.5 rounded-md text-[13px] font-medium transition-all duration-150 hover:bg-[rgba(255,255,255,0.04)]"
-                style={{ color: active ? '#f5f5f4' : 'rgba(245, 245, 244, 0.45)' }}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: active ? '#f5f5f4' : 'rgba(245,245,244,0.42)',
+                  transition: 'all .15s',
+                  textDecoration: 'none',
+                  background: active ? 'rgba(255,255,255,0.05)' : 'transparent',
+                }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
               >
                 {label}
               </Link>
@@ -90,85 +109,96 @@ export function Topbar() {
           })}
         </nav>
 
-        {/* Right side: search + auth pill */}
-        <div className="flex items-center gap-2">
-          {/* Search trigger */}
+        {/* ── Right: Search + Auth ──────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+
+          {/* Search pill */}
           <button
             onClick={() => setCmdOpen(true)}
-            className="flex items-center gap-2 rounded-full transition-all duration-150 hover:bg-[rgba(255,255,255,0.04)]"
+            aria-label="Open search"
             style={{
-              padding: '6px 12px',
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 12px',
+              borderRadius: 999,
               border: '1px solid rgba(255,255,255,0.08)',
-              color: 'rgba(245, 245, 244, 0.5)',
+              background: 'transparent',
+              color: 'rgba(245,245,244,0.45)',
+              cursor: 'pointer',
+              fontSize: 13,
+              transition: 'background .15s',
             }}
-            aria-label="Open command palette"
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
-            <Search size={14} />
-            <span className="text-[13px] hidden sm:inline">Search</span>
+            <Search size={13} />
+            <span className="hidden sm:inline">Search</span>
             <span
-              className="hidden sm:flex items-center gap-0.5 ml-1"
-              style={{ fontSize: 11, color: 'rgba(245, 245, 244, 0.3)' }}
+              className="hidden sm:flex"
+              style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 10, color: 'rgba(245,245,244,0.25)', marginLeft: 2 }}
             >
               <Command size={10} />K
             </span>
           </button>
 
-          {/* ── Auth pill ────────────────────────────────── */}
+          {/* Auth section */}
           {status === 'loading' ? (
-            /* skeleton pill while session loads */
-            <div
-              className="h-8 w-20 rounded-full animate-pulse"
-              style={{ background: 'rgba(255,255,255,0.06)' }}
-            />
+            <div style={{ width: 72, height: 30, borderRadius: 999, background: 'rgba(255,255,255,0.06)', animation: 'pulse 1.5s infinite' }} />
           ) : status === 'authenticated' ? (
-            /* Signed-in: avatar + dropdown */
-            <div className="relative" ref={dropdownRef}>
+            <div ref={dropdownRef} style={{ position: 'relative' }}>
               <button
-                onClick={() => setUserOpen((v) => !v)}
-                className="flex items-center gap-2 rounded-full transition-all duration-150 hover:bg-[rgba(255,255,255,0.06)]"
+                onClick={() => setUserOpen(v => !v)}
                 style={{
-                  padding: '5px 10px 5px 6px',
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '4px 10px 4px 5px',
+                  borderRadius: 999,
                   border: '1px solid rgba(255,255,255,0.08)',
-                  color: '#f5f5f4',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  transition: 'background .15s',
                 }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 aria-label="User menu"
               >
-                <span
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0"
-                  style={{ background: 'rgba(212,165,116,0.18)', color: '#d4a574' }}
-                >
-                  {session.user?.name?.[0]?.toUpperCase() ?? <User size={12} />}
+                {/* Avatar initial */}
+                <span style={{
+                  width: 24, height: 24, borderRadius: '50%',
+                  background: 'rgba(212,165,116,0.15)',
+                  color: '#d4a574',
+                  fontSize: 11, fontWeight: 600,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  {session.user?.name?.[0]?.toUpperCase() ?? '?'}
                 </span>
-                <span className="text-[13px] hidden sm:inline" style={{ color: 'rgba(245,245,244,0.7)' }}>
-                  {session.user?.name ?? session.user?.email}
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(245,245,244,0.75)' }} className="hidden sm:inline">
+                  {session.user?.name}
                 </span>
               </button>
 
-              {/* Dropdown */}
               {userOpen && (
-                <div
-                  className="absolute right-0 mt-2 w-48 rounded-xl overflow-hidden z-50"
-                  style={{
-                    background: '#111113',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                  }}
-                >
-                  <div className="px-3 py-2.5 border-b border-[rgba(255,255,255,0.06)]">
-                    <p className="text-xs font-medium" style={{ color: '#f5f5f4' }}>
-                      {session.user?.name}
-                    </p>
-                    <p className="text-xs mt-0.5 truncate" style={{ color: 'rgba(245,245,244,0.4)' }}>
-                      {session.user?.email}
-                    </p>
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                  width: 200, borderRadius: 12, overflow: 'hidden',
+                  background: '#111113',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
+                  zIndex: 99,
+                }}>
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: '#f5f5f4', margin: 0 }}>{session.user?.name}</p>
+                    <p style={{ fontSize: 11, color: 'rgba(245,245,244,0.38)', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.user?.email}</p>
                   </div>
                   <button
-                    onClick={() => {
-                      setUserOpen(false)
-                      signOut({ callbackUrl: '/auth/signin' })
+                    onClick={() => { setUserOpen(false); signOut({ callbackUrl: '/auth/signin' }) }}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '9px 12px', background: 'transparent', border: 'none',
+                      color: 'rgba(245,245,244,0.55)', fontSize: 13, cursor: 'pointer',
+                      transition: 'background .15s',
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors hover:bg-[rgba(255,255,255,0.04)]"
-                    style={{ color: 'rgba(245,245,244,0.6)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   >
                     <LogOut size={13} />
                     Sign out
@@ -177,19 +207,36 @@ export function Topbar() {
               )}
             </div>
           ) : (
-            /* Signed-out: Sign In pill */
-            <Link
-              href="/auth/signin"
-              className="flex items-center gap-1.5 rounded-full text-[13px] font-medium transition-all duration-150 hover:opacity-85"
-              style={{
-                padding: '6px 14px',
-                background: 'rgba(212,165,116,0.12)',
-                border: '1px solid rgba(212,165,116,0.25)',
-                color: '#d4a574',
-              }}
-            >
-              Sign in
-            </Link>
+            /* Signed-out: Sign In + Sign Up */
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Link
+                href="/auth/signin"
+                style={{
+                  padding: '5px 12px', borderRadius: 999,
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: 'rgba(245,245,244,0.55)', fontSize: 13, fontWeight: 500,
+                  textDecoration: 'none', transition: 'all .15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/auth/signup"
+                style={{
+                  padding: '5px 14px', borderRadius: 999,
+                  background: 'rgba(212,165,116,0.12)',
+                  border: '1px solid rgba(212,165,116,0.22)',
+                  color: '#d4a574', fontSize: 13, fontWeight: 500,
+                  textDecoration: 'none', transition: 'all .15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(212,165,116,0.18)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(212,165,116,0.12)')}
+              >
+                Sign up
+              </Link>
+            </div>
           )}
         </div>
       </header>
