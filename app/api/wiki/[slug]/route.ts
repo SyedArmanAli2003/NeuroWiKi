@@ -10,13 +10,36 @@ export async function GET(
 ) {
   const { slug } = await context.params
 
+  const t0 = Date.now()
   try {
-    const page = await fetchPage(slug)
+    // Run page fetch + related recall + backlinks in parallel.
+    // Related uses the slug as query (cheap) instead of full title — and skips graph_context (saves ~2s).
+    const pagePromise = fetchPage(slug)
+    const relatedPromise = hydra.recall.fullRecall({
+      tenant_id: 'default',
+      query: slug.replace(/-/g, ' '),
+      max_results: 6,
+    }).catch((e: any) => {
+      console.warn(`[wiki:${slug}] related recall failed:`, e?.message)
+      return null
+    })
+
+    const backlinkRows = db.prepare(`
+      SELECT pl.source_slug, p.title
+      FROM page_links pl
+      LEFT JOIN pages p ON p.slug = pl.source_slug
+      WHERE pl.target_slug = ?
+    `).all(slug) as Array<{ source_slug: string; title: string | null }>
+    const backlinks = backlinkRows.map((r) => ({
+      slug: r.source_slug,
+      title: r.title ?? r.source_slug,
+    }))
+
+    const [page, relatedResponse] = await Promise.all([pagePromise, relatedPromise])
     if (!page) {
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
 
-    // Resolve sources from SQLite
     const sourceIds: number[] = []
     if (page.sourceId !== undefined && page.sourceId !== null) {
       const n = parseInt(String(page.sourceId), 10)
@@ -31,39 +54,17 @@ export async function GET(
         raw_content: s.raw_content ?? '',
       }))
 
-    // Related pages via fullRecall (still vector search — this is its actual job)
-    let relatedPages: any[] = []
-    try {
-      const relatedResponse = (await hydra.recall.fullRecall({
-        tenant_id: 'default',
-        query: page.title,
-        max_results: 6,
-        graph_context: true,
-      })) as any
-      relatedPages = (relatedResponse.sources ?? [])
-        .filter((s: any) => ((s.document_metadata?.slug as string) || s.id) !== page.slug)
-        .slice(0, 5)
-        .map((s: any) => ({
-          slug: (s.document_metadata?.slug as string) || s.id,
-          title: s.title ?? 'Unknown',
-          summary: (s.document_metadata?.summary as string) || '',
-          type: (s.document_metadata?.category as string) || 'concept',
-        }))
-    } catch (e) {
-      console.warn(`[wiki:${slug}] related recall failed:`, (e as Error)?.message)
-    }
+    const relatedPages = ((relatedResponse as any)?.sources ?? [])
+      .filter((s: any) => ((s.document_metadata?.slug as string) || s.id) !== page.slug)
+      .slice(0, 5)
+      .map((s: any) => ({
+        slug: (s.document_metadata?.slug as string) || s.id,
+        title: s.title ?? 'Unknown',
+        summary: (s.document_metadata?.summary as string) || '',
+        type: (s.document_metadata?.category as string) || 'concept',
+      }))
 
-    // Backlinks from SQLite
-    const backlinkRows = db.prepare(`
-      SELECT pl.source_slug, p.title
-      FROM page_links pl
-      LEFT JOIN pages p ON p.slug = pl.source_slug
-      WHERE pl.target_slug = ?
-    `).all(slug) as Array<{ source_slug: string; title: string | null }>
-    const backlinks = backlinkRows.map((r) => ({
-      slug: r.source_slug,
-      title: r.title ?? r.source_slug,
-    }))
+    console.log(`[wiki:${slug}] total=${Date.now() - t0}ms`)
 
     return NextResponse.json({
       page: {

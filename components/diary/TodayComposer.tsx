@@ -82,26 +82,46 @@ export function TodayComposer({ date, onEntry }: TodayComposerProps) {
     if (!trimmed || submitting) return
     setSubmitting(true)
     const time = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()
-    const res = await fetch('/api/diary/today', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'entry',
-        date,
-        time,
-        kind,
-        title: title.trim() || null,
-        text: trimmed,
-        filed_under: filedUnder?.slug ?? null,
-      }),
-    })
-    const { entry, synced } = await res.json()
-    onEntry({ ...entry, justAdded: true }, !!synced)
-    setTitle('')
-    setText('')
-    setFiledUnder(null)
-    setSubmitting(false)
-    ref.current?.focus()
+    try {
+      const res = await fetch('/api/diary/today', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'entry',
+          date,
+          time,
+          kind,
+          title: title.trim() || null,
+          text: trimmed,
+          filed_under: filedUnder?.slug ?? null,
+        }),
+      })
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '')
+        console.error('[diary submit] HTTP', res.status, errBody)
+        const { toast } = await import('sonner')
+        toast.error(`Capture not saved (${res.status}). Try again.`)
+        return
+      }
+      const data = await res.json()
+      if (!data?.entry?.id) {
+        console.error('[diary submit] bad response', data)
+        const { toast } = await import('sonner')
+        toast.error('Capture not saved — server returned no entry.')
+        return
+      }
+      onEntry({ ...data.entry, justAdded: true }, !!data.synced)
+      setTitle('')
+      setText('')
+      setFiledUnder(null)
+      ref.current?.focus()
+    } catch (err) {
+      console.error('[diary submit] network/error', err)
+      const { toast } = await import('sonner')
+      toast.error('Capture not saved (network). Your text is still in the box.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const timeStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()

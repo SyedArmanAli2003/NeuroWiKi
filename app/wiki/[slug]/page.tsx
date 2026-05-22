@@ -1,10 +1,9 @@
 import { WikiRenderer } from '@/components/WikiRenderer'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { CopyLink } from '@/components/CopyLink'
 import { StickyTitle } from '@/components/StickyTitle'
 import { WikiEditAgent } from '@/components/WikiEditAgent'
-import { RenameSlug } from '@/components/RenameSlug'
+import { WikiActionsMenu } from '@/components/WikiActionsMenu'
 import { resolveSlugAlias } from '@/lib/db-helpers'
 
 const TYPE_COLORS: Record<string, { color: string; bg: string; border: string }> = {
@@ -114,15 +113,8 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
       <StickyTitle title={page.title} />
 
       <div className="mx-auto px-7 lg:px-10" style={{ maxWidth: '1200px' }}>
-        {/* Back */}
-        <div style={{ paddingTop: '32px' }}>
-          <Link href="/wiki" className="kicker inline-flex items-center gap-1.5 transition-opacity hover:opacity-70">
-            ← Back to library
-          </Link>
-        </div>
-
         {/* Hero */}
-        <header style={{ paddingTop: '40px', paddingBottom: '32px', borderBottom: '1px solid var(--hair)' }}>
+        <header style={{ paddingTop: '72px', paddingBottom: '32px', borderBottom: '1px solid var(--hair)' }}>
           <div className="flex items-start justify-between gap-6 mb-6">
             <TypePill type={page.type} />
             <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -141,8 +133,7 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
                 ✎ Edit
               </Link>
               <WikiEditAgent slug={page.slug} title={page.title} type={page.type} currentContent={page.content} />
-              <RenameSlug slug={page.slug} title={page.title} />
-              <CopyLink slug={slug} />
+              <WikiActionsMenu slug={page.slug} title={page.title} />
             </div>
           </div>
 
@@ -185,6 +176,61 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
           className="grid gap-12 py-12"
           style={{ gridTemplateColumns: '1fr', alignItems: 'start' }}
         >
+          {/* Mobile sidebar — collapsed */}
+          <div className="lg:hidden flex flex-col gap-2 mb-8">
+            {headings.length > 1 && (
+              <details style={{ border: '1px solid var(--hair)', borderRadius: 8, background: 'var(--surface)' }}>
+                <summary className="kicker" style={{ padding: '10px 14px', cursor: 'pointer', color: 'var(--ink-soft)', userSelect: 'none' }}>
+                  Contents · {headings.length}
+                </summary>
+                <div className="flex flex-col gap-1.5" style={{ padding: '4px 14px 12px' }}>
+                  {headings.map((h) => (
+                    <a key={h.id} href={`#${h.id}`} style={{
+                      fontSize: 'var(--fs-body-sm)', color: 'var(--ink-mute)',
+                      paddingLeft: h.level === 3 ? '14px' : '0',
+                    }}>{h.text}</a>
+                  ))}
+                </div>
+              </details>
+            )}
+            {children?.length > 0 && (
+              <details style={{ border: '1px solid var(--hair)', borderRadius: 8, background: 'var(--surface)' }}>
+                <summary className="kicker" style={{ padding: '10px 14px', cursor: 'pointer', color: 'var(--ink-soft)', userSelect: 'none' }}>
+                  Pages in this topic · {children.length}
+                </summary>
+                <div className="flex flex-col" style={{ padding: '4px 14px 10px' }}>
+                  {children.map((c: { slug: string; title: string; type: string }) => (
+                    <SidebarLink key={c.slug} href={`/wiki/${c.slug}`} label={c.title} type={c.type} />
+                  ))}
+                </div>
+              </details>
+            )}
+            {relatedPages?.length > 0 && (
+              <details style={{ border: '1px solid var(--hair)', borderRadius: 8, background: 'var(--surface)' }}>
+                <summary className="kicker" style={{ padding: '10px 14px', cursor: 'pointer', color: 'var(--ink-soft)', userSelect: 'none' }}>
+                  Related · {relatedPages.length}
+                </summary>
+                <div className="flex flex-col" style={{ padding: '4px 14px 10px' }}>
+                  {relatedPages.map((r: { slug: string; title: string; type: string }) => (
+                    <SidebarLink key={r.slug} href={`/wiki/${r.slug}`} label={r.title} type={r.type} />
+                  ))}
+                </div>
+              </details>
+            )}
+            {backlinks?.length > 0 && (
+              <details style={{ border: '1px solid var(--hair)', borderRadius: 8, background: 'var(--surface)' }}>
+                <summary className="kicker" style={{ padding: '10px 14px', cursor: 'pointer', color: 'var(--ink-soft)', userSelect: 'none' }}>
+                  Referenced by · {backlinks.length}
+                </summary>
+                <div className="flex flex-col gap-1.5" style={{ padding: '4px 14px 10px' }}>
+                  {backlinks.map((b: { slug: string; title: string }) => (
+                    <Link key={b.slug} href={`/wiki/${b.slug}`} style={{ fontSize: 'var(--fs-body-sm)', color: 'var(--ink-mute)' }}>← {b.title}</Link>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+
           <div className="lg:grid lg:gap-12" style={{ gridTemplateColumns: '1fr 280px' }}>
             {/* Main content */}
             <article style={{ minWidth: 0 }}>

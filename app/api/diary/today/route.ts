@@ -32,6 +32,7 @@ async function syncToHydra(entry: { id: number; date: string; time: string; kind
         document_metadata: {
           category: 'diary',
           date: entry.date,
+          time: entry.time,
           kind: entry.kind,
           title: entry.title ?? null,
           slug: `diary-${entry.id}`,

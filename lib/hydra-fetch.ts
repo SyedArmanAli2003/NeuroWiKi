@@ -59,56 +59,111 @@ function buildPage(slug: string, sourceItem: any | null, chunkDoc: any | null): 
   }
 }
 
-// Single canonical fetch by slug. Combines listData (meta) + fullRecall chunks (body).
+// Single canonical fetch by slug. Uses listData w/ include_fields=['content', ...]
+// so body comes back in the meta call — no separate vector search needed.
+// Falls back to fullRecall only if content is missing.
 export async function fetchPage(slug: string, tenantId: string = 'default'): Promise<WikiPage | null> {
   let sourceItem: any | null = null
   let chunkDoc: any | null = null
 
-  // Metadata
   try {
     const res = (await hydra.fetch.listData({
       tenant_id: tenantId,
       kind: 'knowledge',
       source_ids: [slug],
+      include_fields: ['content', 'document_metadata', 'title', 'timestamp', 'type'],
     })) as any
     sourceItem = (res?.sources ?? [])[0] ?? null
   } catch (e: any) {
     if (e?.statusCode !== 404) console.warn(`[hydra-fetch] listData(${slug}):`, e?.message)
   }
 
-  // Body — fullRecall returns chunks w/ chunk_content (JSON of original upload doc)
-  try {
-    const recall = (await hydra.recall.fullRecall({
-      tenant_id: tenantId,
-      query: slug,
-      max_results: 20,
-    })) as any
-    const chunks: any[] = recall?.chunks ?? []
-    const match = chunks.find((c) => c.source_id === slug) ?? chunks.find((c) => {
-      const d = parseChunkDoc(c.chunk_content)
-      return d?.document_metadata?.slug === slug || d?.id === slug
-    })
-    if (match) chunkDoc = parseChunkDoc(match.chunk_content)
-  } catch (e: any) {
-    console.warn(`[hydra-fetch] fullRecall(${slug}):`, e?.message)
+  // sourceItem.content may be string (JSON-encoded) or object
+  if (sourceItem) {
+    const c = sourceItem.content
+    if (typeof c === 'string') {
+      try {
+        const parsed = JSON.parse(c)
+        sourceItem.content = parsed
+      } catch { /* leave as string */ }
+    }
+  }
+
+  const md = (sourceItem?.content?.markdown as string | undefined)
+    ?? (typeof sourceItem?.content === 'string' ? sourceItem.content : '')
+
+  // Fallback only if content body genuinely missing
+  if (!md) {
+    try {
+      const recall = (await hydra.recall.fullRecall({
+        tenant_id: tenantId,
+        query: slug,
+        max_results: 20,
+      })) as any
+      const chunks: any[] = recall?.chunks ?? []
+      const match = chunks.find((c) => c.source_id === slug) ?? chunks.find((c) => {
+        const d = parseChunkDoc(c.chunk_content)
+        return d?.document_metadata?.slug === slug || d?.id === slug
+      })
+      if (match) chunkDoc = parseChunkDoc(match.chunk_content)
+    } catch (e: any) {
+      console.warn(`[hydra-fetch] fullRecall fallback(${slug}):`, e?.message)
+    }
   }
 
   return buildPage(slug, sourceItem, chunkDoc)
 }
 
+// In-memory cache for the paginated full-knowledge listing.
+// Multiple endpoints (/api/wiki, /children, onlyDiary, backfill) all need this dump.
+// Without cache each one re-scans hydra → 5-7s × N calls per page navigation.
+const RAW_LIST_TTL_MS = 60_000
+let rawListCache: { at: number; data: any[]; promise?: Promise<any[]> } | null = null
+
+export async function listAllKnowledgeRaw(tenantId: string = 'default'): Promise<any[]> {
+  const now = Date.now()
+  if (rawListCache && now - rawListCache.at < RAW_LIST_TTL_MS) return rawListCache.data
+  if (rawListCache?.promise) return rawListCache.promise
+  const promise = (async () => {
+    const out: any[] = []
+    let page = 1
+    try {
+      while (true) {
+        const res = (await hydra.fetch.listData({
+          tenant_id: tenantId,
+          kind: 'knowledge',
+          page,
+          page_size: 100,
+        })) as any
+        const batch: any[] = res?.sources ?? []
+        out.push(...batch)
+        if (batch.length < 100) break
+        page++
+        if (page > 50) break
+      }
+    } catch (e: any) {
+      if (e?.statusCode !== 404 && !e?.message?.includes?.('does not exist')) {
+        console.warn('[hydra-fetch] listAllKnowledgeRaw:', e?.message)
+      }
+    }
+    rawListCache = { at: Date.now(), data: out }
+    return out
+  })()
+  rawListCache = { at: now, data: rawListCache?.data ?? [], promise }
+  return promise
+}
+
+export function invalidateKnowledgeListCache() {
+  rawListCache = null
+}
+
 // Bulk meta listing (no content body). Use for indexes/hierarchy.
 export async function listPageMeta(tenantId: string = 'default'): Promise<Array<Pick<WikiPage, 'slug' | 'title' | 'summary' | 'type' | 'timestamp' | 'verifiedAt' | 'breakdownSource'>>> {
+  const items = await listAllKnowledgeRaw(tenantId)
   const out: any[] = []
-  let page = 1
   try {
-    while (true) {
-      const res = (await hydra.fetch.listData({
-        tenant_id: tenantId,
-        kind: 'knowledge',
-        page,
-        page_size: 100,
-      })) as any
-      const batch: any[] = res?.sources ?? []
+    {
+      const batch = items
       for (const item of batch) {
         const meta = item?.document_metadata ?? {}
         const bs = meta.breakdownSource
@@ -122,9 +177,6 @@ export async function listPageMeta(tenantId: string = 'default'): Promise<Array<
           breakdownSource: Array.isArray(bs) ? bs : bs ? [bs] : undefined,
         })
       }
-      if (batch.length < 100) break
-      page++
-      if (page > 50) break
     }
   } catch (e: any) {
     if (e?.statusCode !== 404) console.warn('[hydra-fetch] listPageMeta:', e?.message)
