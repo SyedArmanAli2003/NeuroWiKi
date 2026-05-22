@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { signIn, useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { Sparkles, Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react'
+import Link from 'next/link'
+import { Eye, EyeOff, AlertCircle, ArrowRight, Sparkles } from 'lucide-react'
 
 export default function SignInPage() {
   const router = useRouter()
@@ -26,7 +27,7 @@ export default function SignInPage() {
     const result = await signIn('credentials', { email, password, redirect: false })
     setLoading(false)
     if (result?.error) {
-      setError('Invalid email or password. Please try again.')
+      setError('Invalid email or password.')
     } else {
       router.push('/')
     }
@@ -34,175 +35,81 @@ export default function SignInPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <div className="w-6 h-6 rounded-full border-2 border-[rgba(255,255,255,0.1)] border-t-[#d4a574] animate-spin" />
+      <div className="auth-page-root">
+        <div className="auth-spinner-lg" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[#09090b] flex items-center justify-center px-4 relative overflow-hidden">
+    <div className="auth-page-root">
+      <div className="auth-glow" />
+      <div className="auth-grid" />
 
-      {/* Subtle radial glow — same as landing hero */}
-      <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[500px] pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse at center, rgba(212,165,116,0.08) 0%, transparent 70%)' }}
-      />
+      <div className="auth-card-wrap">
+        {/* Brand */}
+        <Link href="/" className="auth-brand">
+          <Sparkles size={14} style={{ color: '#d4a574' }} />
+          <span>NeuroWiki</span>
+        </Link>
 
-      {/* Grid overlay — same as landing page */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
-          backgroundSize: '48px 48px',
-        }}
-      />
+        <h1 className="auth-heading">Welcome back</h1>
+        <p className="auth-subheading">Sign in to your personal memory agent</p>
 
-      <div className="relative z-10 w-full max-w-sm">
-
-        {/* Brand mark */}
-        <div className="flex items-center justify-center gap-2 mb-10">
-          <Sparkles size={16} style={{ color: '#d4a574' }} />
-          <span className="text-xs font-medium tracking-widest uppercase" style={{ color: 'rgba(245,245,244,0.5)' }}>
-            NeuroWiki
-          </span>
-        </div>
-
-        {/* Heading */}
-        <h1
-          className="text-3xl font-medium tracking-tight text-center mb-2"
-          style={{ color: '#f5f5f4', letterSpacing: '-0.025em' }}
-        >
-          Welcome back
-        </h1>
-        <p className="text-sm text-center mb-8" style={{ color: 'rgba(245,245,244,0.4)' }}>
-          Sign in to your personal memory agent
-        </p>
-
-        {/* Card */}
-        <div
-          className="rounded-2xl p-6"
-          style={{
-            background: 'rgba(255,255,255,0.025)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            backdropFilter: 'blur(12px)',
-          }}
-        >
-          <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-
-            {/* Email */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="auth-email" className="text-xs font-medium uppercase tracking-widest" style={{ color: 'rgba(245,245,244,0.4)' }}>
-                Email
-              </label>
+        <div className="auth-card">
+          <form onSubmit={handleSubmit} noValidate className="auth-form">
+            <div className="auth-field">
+              <label htmlFor="signin-email" className="auth-label">Email</label>
               <input
-                id="auth-email"
+                id="signin-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
                 autoComplete="email"
-                className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all duration-150"
-                style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  color: '#f5f5f4',
-                }}
-                onFocus={(e) => {
-                  e.target.style.border = '1px solid rgba(212,165,116,0.4)'
-                  e.target.style.background = 'rgba(212,165,116,0.04)'
-                }}
-                onBlur={(e) => {
-                  e.target.style.border = '1px solid rgba(255,255,255,0.08)'
-                  e.target.style.background = 'rgba(255,255,255,0.04)'
-                }}
+                className="auth-input"
               />
             </div>
 
-            {/* Password */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="auth-password" className="text-xs font-medium uppercase tracking-widest" style={{ color: 'rgba(245,245,244,0.4)' }}>
-                Password
-              </label>
-              <div className="relative">
+            <div className="auth-field">
+              <label htmlFor="signin-password" className="auth-label">Password</label>
+              <div className="auth-input-wrap">
                 <input
-                  id="auth-password"
+                  id="signin-password"
                   type={showPass ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
                   autoComplete="current-password"
-                  className="w-full rounded-xl px-4 py-3 pr-11 text-sm outline-none transition-all duration-150"
-                  style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    color: '#f5f5f4',
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.border = '1px solid rgba(212,165,116,0.4)'
-                    e.target.style.background = 'rgba(212,165,116,0.04)'
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.border = '1px solid rgba(255,255,255,0.08)'
-                    e.target.style.background = 'rgba(255,255,255,0.04)'
-                  }}
+                  className="auth-input auth-input-pr"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPass((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 transition-opacity hover:opacity-70"
-                  style={{ color: 'rgba(245,245,244,0.35)' }}
-                  aria-label={showPass ? 'Hide password' : 'Show password'}
-                >
-                  {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                <button type="button" className="auth-eye-btn" onClick={() => setShowPass(v => !v)} aria-label="Toggle password">
+                  {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
             </div>
 
-            {/* Error */}
             {error && (
-              <div
-                className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm"
-                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}
-                role="alert"
-              >
-                <AlertCircle size={14} className="shrink-0" />
+              <div className="auth-error" role="alert">
+                <AlertCircle size={13} className="shrink-0" />
                 {error}
               </div>
             )}
 
-            {/* Submit */}
-            <button
-              id="auth-submit"
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full justify-center mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <span className="w-4 h-4 rounded-full border-2 border-[rgba(255,255,255,0.3)] border-t-white animate-spin" />
-              ) : (
-                <>
-                  Sign in
-                  <ArrowRight size={14} />
-                </>
-              )}
+            <button id="signin-submit" type="submit" disabled={loading} className="auth-submit-btn">
+              {loading
+                ? <span className="auth-btn-spinner" />
+                : <><span>Sign in</span><ArrowRight size={14} /></>
+              }
             </button>
           </form>
         </div>
 
-        {/* Demo hint */}
-        <p className="text-center text-xs mt-5" style={{ color: 'rgba(245,245,244,0.25)' }}>
-          Demo &mdash;{' '}
-          <code className="rounded px-1 py-0.5" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(212,165,116,0.8)' }}>
-            admin@neurowiki.ai
-          </code>{' '}
-          /{' '}
-          <code className="rounded px-1 py-0.5" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(212,165,116,0.8)' }}>
-            neurowiki2024
-          </code>
+        <p className="auth-switch">
+          Don&apos;t have an account?{' '}
+          <Link href="/auth/signup" className="auth-switch-link">Create one</Link>
         </p>
       </div>
     </div>
