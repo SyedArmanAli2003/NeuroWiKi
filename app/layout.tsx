@@ -7,6 +7,7 @@ import { BackButton } from '@/components/layout/BackButton'
 import { Topbar } from '@/components/layout/Topbar'
 import { PageTransition } from '@/components/PageTransition'
 import { Footer } from '@/components/Footer'
+import { SessionProvider } from '@/components/auth/SessionProvider'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -30,30 +31,32 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} bg-background`}>
       <body className="bg-[#09090b] text-[#f5f5f4] antialiased">
-        <HoverSidebar />
-        <Topbar />
-        <BackButton />
-        <main className="min-h-screen flex flex-col">
-          <PageTransition>
-            <div className="flex-1">
-              {children}
-            </div>
-          </PageTransition>
-          <Footer />
-        </main>
-        <Toaster
-          position="bottom-right"
-          toastOptions={{
-            style: {
-              background: '#111113',
-              border: '1px solid rgba(255,255,255,0.06)',
-              color: '#f5f5f4',
-              fontSize: '13px',
-              borderRadius: '12px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-            },
-          }}
-        />
+        <SessionProvider>
+          <HoverSidebar />
+          <Topbar />
+          <BackButton />
+          <main className="min-h-screen flex flex-col">
+            <PageTransition>
+              <div className="flex-1">
+                {children}
+              </div>
+            </PageTransition>
+            <Footer />
+          </main>
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              style: {
+                background: '#111113',
+                border: '1px solid rgba(255,255,255,0.06)',
+                color: '#f5f5f4',
+                fontSize: '13px',
+                borderRadius: '12px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+              },
+            }}
+          />
+        </SessionProvider>
       </body>
     </html>
   )
