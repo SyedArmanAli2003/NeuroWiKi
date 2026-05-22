@@ -1,6 +1,9 @@
 import NextAuth from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 
+/* ------------------------------------------------------------------ *
+ *  Demo users — swap for a real DB lookup in production               *
+ * ------------------------------------------------------------------ */
 const DEMO_USERS = [
   { id: '1', email: 'admin@neurowiki.ai', password: 'neurowiki2024', name: 'Admin' },
 ]
@@ -15,25 +18,16 @@ const handler = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
-
         const user = DEMO_USERS.find(
-          (u) =>
-            u.email === credentials.email &&
-            u.password === credentials.password,
+          (u) => u.email === credentials.email && u.password === credentials.password,
         )
-
-        if (user) {
-          return { id: user.id, email: user.email, name: user.name }
-        }
-        return null
+        return user ? { id: user.id, email: user.email, name: user.name } : null
       },
     }),
   ],
-  pages: {
-    signIn: '/auth/signin',
-  },
+  pages:   { signIn: '/auth/signin' },
   session: { strategy: 'jwt' },
-  secret: process.env.NEXTAUTH_SECRET ?? 'neurowiki-dev-secret-change-in-prod',
+  secret:  process.env.NEXTAUTH_SECRET ?? 'neurowiki-dev-secret-change-in-prod',
   callbacks: {
     async jwt({ token, user }) {
       if (user) token.id = user.id

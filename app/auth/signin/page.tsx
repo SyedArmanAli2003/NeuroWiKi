@@ -3,18 +3,18 @@
 import { useState, useEffect } from 'react'
 import { signIn, useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { Sparkles, Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react'
 
 export default function SignInPage() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { status } = useSession()
 
-  const [email, setEmail]       = useState('')
+  const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError]       = useState('')
-  const [loading, setLoading]   = useState(false)
+  const [error,    setError]    = useState('')
+  const [loading,  setLoading]  = useState(false)
   const [showPass, setShowPass] = useState(false)
 
-  // Redirect if already signed in
   useEffect(() => {
     if (status === 'authenticated') router.replace('/')
   }, [status, router])
@@ -23,15 +23,8 @@ export default function SignInPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
-
-    const result = await signIn('credentials', {
-      email,
-      password,
-      redirect: false,
-    })
-
+    const result = await signIn('credentials', { email, password, redirect: false })
     setLoading(false)
-
     if (result?.error) {
       setError('Invalid email or password. Please try again.')
     } else {
@@ -41,141 +34,176 @@ export default function SignInPage() {
 
   if (status === 'loading') {
     return (
-      <div className="auth-loader">
-        <span className="auth-spinner" />
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <div className="w-6 h-6 rounded-full border-2 border-[rgba(255,255,255,0.1)] border-t-[#d4a574] animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="auth-root">
-      {/* Animated background blobs */}
-      <div className="auth-bg">
-        <div className="auth-blob auth-blob-1" />
-        <div className="auth-blob auth-blob-2" />
-        <div className="auth-blob auth-blob-3" />
-      </div>
+    <div className="min-h-screen bg-[#09090b] flex items-center justify-center px-4 relative overflow-hidden">
 
-      <div className="auth-card">
-        {/* Logo / Brand */}
-        <div className="auth-brand">
-          <div className="auth-brand-icon">
-            <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="14" stroke="url(#g1)" strokeWidth="2" />
-              <path d="M8 16 Q12 8 16 16 Q20 24 24 16" stroke="url(#g1)" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-              <defs>
-                <linearGradient id="g1" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#a78bfa" />
-                  <stop offset="100%" stopColor="#38bdf8" />
-                </linearGradient>
-              </defs>
-            </svg>
-          </div>
-          <span className="auth-brand-name">NeuroWiki</span>
+      {/* Subtle radial glow — same as landing hero */}
+      <div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[500px] pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse at center, rgba(212,165,116,0.08) 0%, transparent 70%)' }}
+      />
+
+      {/* Grid overlay — same as landing page */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+        }}
+      />
+
+      <div className="relative z-10 w-full max-w-sm">
+
+        {/* Brand mark */}
+        <div className="flex items-center justify-center gap-2 mb-10">
+          <Sparkles size={16} style={{ color: '#d4a574' }} />
+          <span className="text-xs font-medium tracking-widest uppercase" style={{ color: 'rgba(245,245,244,0.5)' }}>
+            NeuroWiki
+          </span>
         </div>
 
-        <h1 className="auth-title">Welcome back</h1>
-        <p className="auth-subtitle">Sign in to your personal AI-powered wiki</p>
+        {/* Heading */}
+        <h1
+          className="text-3xl font-medium tracking-tight text-center mb-2"
+          style={{ color: '#f5f5f4', letterSpacing: '-0.025em' }}
+        >
+          Welcome back
+        </h1>
+        <p className="text-sm text-center mb-8" style={{ color: 'rgba(245,245,244,0.4)' }}>
+          Sign in to your personal memory agent
+        </p>
 
-        <form className="auth-form" onSubmit={handleSubmit} noValidate>
-          {/* Email */}
-          <div className="auth-field">
-            <label htmlFor="auth-email" className="auth-label">Email address</label>
-            <div className="auth-input-wrap">
-              <svg className="auth-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-              </svg>
+        {/* Card */}
+        <div
+          className="rounded-2xl p-6"
+          style={{
+            background: 'rgba(255,255,255,0.025)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+
+            {/* Email */}
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="auth-email" className="text-xs font-medium uppercase tracking-widest" style={{ color: 'rgba(245,245,244,0.4)' }}>
+                Email
+              </label>
               <input
                 id="auth-email"
                 type="email"
-                className="auth-input"
-                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
                 required
                 autoComplete="email"
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all duration-150"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#f5f5f4',
+                }}
+                onFocus={(e) => {
+                  e.target.style.border = '1px solid rgba(212,165,116,0.4)'
+                  e.target.style.background = 'rgba(212,165,116,0.04)'
+                }}
+                onBlur={(e) => {
+                  e.target.style.border = '1px solid rgba(255,255,255,0.08)'
+                  e.target.style.background = 'rgba(255,255,255,0.04)'
+                }}
               />
             </div>
-          </div>
 
-          {/* Password */}
-          <div className="auth-field">
-            <label htmlFor="auth-password" className="auth-label">Password</label>
-            <div className="auth-input-wrap">
-              <svg className="auth-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-              <input
-                id="auth-password"
-                type={showPass ? 'text' : 'password'}
-                className="auth-input auth-input-pad-right"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-              <button
-                type="button"
-                className="auth-toggle-pass"
-                onClick={() => setShowPass((v) => !v)}
-                aria-label={showPass ? 'Hide password' : 'Show password'}
+            {/* Password */}
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="auth-password" className="text-xs font-medium uppercase tracking-widest" style={{ color: 'rgba(245,245,244,0.4)' }}>
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="auth-password"
+                  type={showPass ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  autoComplete="current-password"
+                  className="w-full rounded-xl px-4 py-3 pr-11 text-sm outline-none transition-all duration-150"
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: '#f5f5f4',
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.border = '1px solid rgba(212,165,116,0.4)'
+                    e.target.style.background = 'rgba(212,165,116,0.04)'
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.border = '1px solid rgba(255,255,255,0.08)'
+                    e.target.style.background = 'rgba(255,255,255,0.04)'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 transition-opacity hover:opacity-70"
+                  style={{ color: 'rgba(245,245,244,0.35)' }}
+                  aria-label={showPass ? 'Hide password' : 'Show password'}
+                >
+                  {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Error */}
+            {error && (
+              <div
+                className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm"
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}
+                role="alert"
               >
-                {showPass ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                    <line x1="1" y1="1" x2="23" y2="23" />
-                  </svg>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="auth-error" role="alert">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-              {error}
-            </div>
-          )}
-
-          {/* Submit */}
-          <button
-            id="auth-submit"
-            type="submit"
-            className="auth-btn"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <span className="auth-btn-spinner" />
-                Signing in…
-              </>
-            ) : (
-              'Sign in'
+                <AlertCircle size={14} className="shrink-0" />
+                {error}
+              </div>
             )}
-          </button>
-        </form>
+
+            {/* Submit */}
+            <button
+              id="auth-submit"
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full justify-center mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <span className="w-4 h-4 rounded-full border-2 border-[rgba(255,255,255,0.3)] border-t-white animate-spin" />
+              ) : (
+                <>
+                  Sign in
+                  <ArrowRight size={14} />
+                </>
+              )}
+            </button>
+          </form>
+        </div>
 
         {/* Demo hint */}
-        <div className="auth-demo-hint">
-          <span>Demo credentials:</span>
-          <code>admin@neurowiki.ai</code>
-          <span>/</span>
-          <code>neurowiki2024</code>
-        </div>
+        <p className="text-center text-xs mt-5" style={{ color: 'rgba(245,245,244,0.25)' }}>
+          Demo &mdash;{' '}
+          <code className="rounded px-1 py-0.5" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(212,165,116,0.8)' }}>
+            admin@neurowiki.ai
+          </code>{' '}
+          /{' '}
+          <code className="rounded px-1 py-0.5" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(212,165,116,0.8)' }}>
+            neurowiki2024
+          </code>
+        </p>
       </div>
     </div>
   )
