@@ -3,13 +3,13 @@ import { getFirestore, collection, addDoc, getDocs, query, where, limit } from '
 import bcrypt from 'bcryptjs'
 
 const firebaseConfig = {
-  apiKey: "AIzaSyD2NDYqPmnZLeTccDhG4PNcGrjbGaqW9PE",
-  authDomain: "gen-lang-client-0505225200.firebaseapp.com",
-  projectId: "gen-lang-client-0505225200",
-  storageBucket: "gen-lang-client-0505225200.firebasestorage.app",
-  messagingSenderId: "90270564696",
-  appId: "1:90270564696:web:7113350df1c07d92da652d",
-  measurementId: "G-NBEDMZQMQ4"
+  apiKey: "yourapikey",
+  authDomain: "secret",
+  projectId: "secret",
+  storageBucket: "secret",
+  messagingSenderId: "secret",
+  appId: "secret",
+  measurementId: "secret"
 }
 
 // Initialize Firebase only if not already initialized
