@@ -12,9 +12,9 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
-        const user = getUserByEmail(credentials.email)
+        const user = await getUserByEmail(credentials.email)
         if (!user) return null
-        const valid = await verifyPassword(credentials.password, user.password)
+        const valid = await verifyPassword(credentials.password, user.password || '')
         if (!valid) return null
         return { id: String(user.id), email: user.email, name: user.name }
       },

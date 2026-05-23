@@ -8,8 +8,6 @@ import { runConsistencyCheck } from '@/lib/agents/consistency-agent'
 import { hydra } from '@/lib/hydra'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth-options'
-import { invalidateKnowledgeListCache } from '@/lib/hydra-fetch'
-
 
 // ---------------------------------------------------------------------------
 // File parser — supports PDF, DOCX, TXT, MD
@@ -227,8 +225,6 @@ export async function POST(req: NextRequest) {
         const newSlugs = allPages.map((p: any) => p.slug)
         const existingSlugs = allExistingSlugs.filter(s => !newSlugs.includes(s))
         const consistency = await runConsistencyCheck(allPages, existingSlugs.slice(0, 20))
-
-        invalidateKnowledgeListCache(tenantId)
 
         send(JSON.stringify({
           final: true,

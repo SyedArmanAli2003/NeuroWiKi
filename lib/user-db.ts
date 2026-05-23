@@ -1,43 +1,90 @@
-/**
- * lib/user-db.ts
- * Users table — production-ready: bcrypt hashed passwords, stored in the same SQLite DB.
- */
-import { db } from './db'
+import { initializeApp, getApps, getApp } from 'firebase/app'
+import { getFirestore, collection, addDoc, getDocs, query, where, limit } from 'firebase/firestore'
 import bcrypt from 'bcryptjs'
 
-// Ensure users table exists (idempotent migration)
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT    NOT NULL,
-    email      TEXT    NOT NULL UNIQUE COLLATE NOCASE,
-    password   TEXT    NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )
-`)
+const firebaseConfig = {
+  apiKey: "AIzaSyD2NDYqPmnZLeTccDhG4PNcGrjbGaqW9PE",
+  authDomain: "gen-lang-client-0505225200.firebaseapp.com",
+  projectId: "gen-lang-client-0505225200",
+  storageBucket: "gen-lang-client-0505225200.firebasestorage.app",
+  messagingSenderId: "90270564696",
+  appId: "1:90270564696:web:7113350df1c07d92da652d",
+  measurementId: "G-NBEDMZQMQ4"
+}
+
+// Initialize Firebase only if not already initialized
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)
+const db = getFirestore(app)
+const USERS_COLLECTION = 'users'
 
 export interface User {
-  id: number
+  id: string
   name: string
   email: string
-  password: string
+  password?: string
   created_at: string
 }
 
+/**
+ * Retrieve a user by email from Firestore.
+ */
+export async function getUserByEmail(email: string): Promise<User | undefined> {
+  if (!email) return undefined
+  
+  try {
+    const q = query(
+      collection(db, USERS_COLLECTION),
+      where('email', '==', email.toLowerCase().trim()),
+      limit(1)
+    )
+    const snapshot = await getDocs(q)
+
+    if (snapshot.empty) return undefined
+
+    const doc = snapshot.docs[0]
+    const data = doc.data()
+    
+    return {
+      id: doc.id,
+      name: data.name,
+      email: data.email,
+      password: data.password,
+      created_at: data.created_at || new Date().toISOString(),
+    }
+  } catch (error) {
+    console.error('Firestore getUserByEmail error:', error)
+    return undefined
+  }
+}
+
+/**
+ * Create a new user doc in Firestore with a hashed password.
+ */
 export async function createUser(name: string, email: string, plainPassword: string): Promise<User> {
-  const hashed = await bcrypt.hash(plainPassword, 12)
-  const stmt = db.prepare(
-    `INSERT INTO users (name, email, password) VALUES (?, ?, ?) RETURNING *`
-  )
-  return stmt.get(name, email.toLowerCase().trim(), hashed) as User
+  const hashedPassword = await bcrypt.hash(plainPassword, 12)
+  const normalizedEmail = email.toLowerCase().trim()
+
+  const newUser = {
+    name,
+    email: normalizedEmail,
+    password: hashedPassword,
+    created_at: new Date().toISOString(),
+  }
+
+  // Add user to the Firestore collection
+  const docRef = await addDoc(collection(db, USERS_COLLECTION), newUser)
+
+  return {
+    id: docRef.id,
+    name,
+    email: normalizedEmail,
+    created_at: newUser.created_at,
+  }
 }
 
-export function getUserByEmail(email: string): User | undefined {
-  return db
-    .prepare(`SELECT * FROM users WHERE email = ? COLLATE NOCASE`)
-    .get(email.trim()) as User | undefined
-}
-
-export async function verifyPassword(plain: string, hashed: string): Promise<boolean> {
-  return bcrypt.compare(plain, hashed)
+/**
+ * Compare plain text password against hash stored in DB.
+ */
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(password, hash)
 }

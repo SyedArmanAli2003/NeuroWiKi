@@ -42,7 +42,7 @@ export async function DELETE(
   }
 
   // Bust the list cache so next load reflects deletion
-  invalidateKnowledgeListCache()
+  invalidateKnowledgeListCache(tenantId)
 
   return NextResponse.json({ ok: true })
 }

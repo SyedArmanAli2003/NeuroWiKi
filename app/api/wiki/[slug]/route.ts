@@ -2,28 +2,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { hydra, ensureTenant, waitForIngestion } from '@/lib/hydra'
 import { db } from '@/lib/db'
 import { upsertPageHealth, upsertPageLinks, getSourceById } from '@/lib/db-helpers'
-import { fetchPage, invalidateKnowledgeListCache } from '@/lib/hydra-fetch'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
+import { fetchPage } from '@/lib/hydra-fetch'
 
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-  const userId = (session.user as any).id as string
-  const tenantId = `user-${userId}`
-
   const { slug } = await context.params
 
   const t0 = Date.now()
   try {
-    const pagePromise = fetchPage(slug, tenantId)
+    // Run page fetch + related recall + backlinks in parallel.
+    // Related uses the slug as query (cheap) instead of full title — and skips graph_context (saves ~2s).
+    const pagePromise = fetchPage(slug)
     const relatedPromise = hydra.recall.fullRecall({
-      tenant_id: tenantId,
+      tenant_id: 'default',
       query: slug.replace(/-/g, ' '),
       max_results: 6,
     }).catch((e: any) => {
@@ -93,26 +86,19 @@ export async function GET(
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-  const userId = (session.user as any).id as string
-  const tenantId = `user-${userId}`
-
   const { slug } = await params
   const { title, content, summary, type } = await req.json()
 
   try {
-    await ensureTenant(tenantId)
+    await ensureTenant('default')
     const cleanedContent = content.replace(/^#\s+.+\n+/, '')
 
     const uploadResponse = (await hydra.upload.knowledge({
-      tenant_id: tenantId,
+      tenant_id: 'default',
       upsert: true,
       app_knowledge: JSON.stringify([
         {
-          tenant_id: tenantId,
+          tenant_id: 'default',
           sub_tenant_id: 'default',
           id: slug,
           title,
@@ -131,7 +117,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
     })) as any
 
     const realSourceId = uploadResponse?.results?.[0]?.source_id ?? slug
-    const ready = await waitForIngestion(realSourceId, tenantId)
+    const ready = await waitForIngestion(realSourceId, 'default')
 
     upsertPageHealth({
       slug,
@@ -146,9 +132,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
     db.prepare(`DELETE FROM page_links WHERE source_slug = ?`).run(slug)
     const linkedSlugs = [...cleanedContent.matchAll(/\[\[([^\]]+)\]\]/g)].map((m: any) => m[1].trim())
     if (linkedSlugs.length) upsertPageLinks(slug, linkedSlugs)
-
-    // Invalidate the cache for this user
-    invalidateKnowledgeListCache(tenantId)
 
     return NextResponse.json({ page: { slug, title, content: cleanedContent, summary, type } })
   } catch (error: any) {
