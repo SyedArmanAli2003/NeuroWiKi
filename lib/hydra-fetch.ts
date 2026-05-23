@@ -118,12 +118,14 @@ export async function fetchPage(slug: string, tenantId: string = 'default'): Pro
 // Multiple endpoints (/api/wiki, /children, onlyDiary, backfill) all need this dump.
 // Without cache each one re-scans hydra → 5-7s × N calls per page navigation.
 const RAW_LIST_TTL_MS = 60_000
-let rawListCache: { at: number; data: any[]; promise?: Promise<any[]> } | null = null
+const rawListCacheMap = new Map<string, { at: number; data: any[]; promise?: Promise<any[]> }>()
 
 export async function listAllKnowledgeRaw(tenantId: string = 'default'): Promise<any[]> {
   const now = Date.now()
-  if (rawListCache && now - rawListCache.at < RAW_LIST_TTL_MS) return rawListCache.data
-  if (rawListCache?.promise) return rawListCache.promise
+  const cached = rawListCacheMap.get(tenantId)
+  if (cached && now - cached.at < RAW_LIST_TTL_MS) return cached.data
+  if (cached?.promise) return cached.promise
+  
   const promise = (async () => {
     const out: any[] = []
     let page = 1
@@ -146,15 +148,20 @@ export async function listAllKnowledgeRaw(tenantId: string = 'default'): Promise
         console.warn('[hydra-fetch] listAllKnowledgeRaw:', e?.message)
       }
     }
-    rawListCache = { at: Date.now(), data: out }
+    rawListCacheMap.set(tenantId, { at: Date.now(), data: out })
     return out
   })()
-  rawListCache = { at: now, data: rawListCache?.data ?? [], promise }
+  
+  rawListCacheMap.set(tenantId, { at: now, data: cached?.data ?? [], promise })
   return promise
 }
 
-export function invalidateKnowledgeListCache() {
-  rawListCache = null
+export function invalidateKnowledgeListCache(tenantId?: string) {
+  if (tenantId) {
+    rawListCacheMap.delete(tenantId)
+  } else {
+    rawListCacheMap.clear()
+  }
 }
 
 // Bulk meta listing (no content body). Use for indexes/hierarchy.

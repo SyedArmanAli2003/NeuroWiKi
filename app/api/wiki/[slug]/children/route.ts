@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listAllKnowledgeRaw } from '@/lib/hydra-fetch'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-options'
 
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = (session.user as any).id as string
+  const tenantId = `user-${userId}`
+
   const { slug } = await context.params
 
   try {
-    const items = await listAllKnowledgeRaw('default')
+    const items = await listAllKnowledgeRaw(tenantId)
 
     const slugSet = new Set(items.map((i: any) => (i.document_metadata?.slug as string) || i.id))
     const childSlugs = new Set<string>()

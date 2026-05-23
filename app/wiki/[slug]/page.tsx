@@ -4,7 +4,12 @@ import { notFound, redirect } from 'next/navigation'
 import { StickyTitle } from '@/components/StickyTitle'
 import { WikiEditAgent } from '@/components/WikiEditAgent'
 import { WikiActionsMenu } from '@/components/WikiActionsMenu'
-import { resolveSlugAlias } from '@/lib/db-helpers'
+import { resolveSlugAlias, getSourceById } from '@/lib/db-helpers'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-options'
+import { fetchPage, listAllKnowledgeRaw } from '@/lib/hydra-fetch'
+import { hydra } from '@/lib/hydra'
+import { db } from '@/lib/db'
 
 const TYPE_COLORS: Record<string, { color: string; bg: string; border: string }> = {
   concept:      { color: '#C7B8FF', bg: 'rgba(199,184,255,0.07)', border: 'rgba(199,184,255,0.22)' },
@@ -53,21 +58,125 @@ function extractHeadings(content: string) {
     }))
 }
 
-async function getPage(slug: string) {
+async function getPage(slug: string, tenantId: string) {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/wiki/${slug}`, { cache: 'no-store' })
-    if (!res.ok) return null
-    return res.json()
-  } catch { return null }
+    const pagePromise = fetchPage(slug, tenantId)
+    const relatedPromise = hydra.recall.fullRecall({
+      tenant_id: tenantId,
+      query: slug.replace(/-/g, ' '),
+      max_results: 6,
+    }).catch((e: any) => {
+      console.warn(`[wiki:${slug}] related recall failed:`, e?.message)
+      return null
+    })
+
+    const backlinkRows = db.prepare(`
+      SELECT pl.source_slug, p.title
+      FROM page_links pl
+      LEFT JOIN pages p ON p.slug = pl.source_slug
+      WHERE pl.target_slug = ?
+    `).all(slug) as Array<{ source_slug: string; title: string | null }>
+    const backlinks = backlinkRows.map((r) => ({
+      slug: r.source_slug,
+      title: r.title ?? r.source_slug,
+    }))
+
+    const [page, relatedResponse] = await Promise.all([pagePromise, relatedPromise])
+    if (!page) return null
+
+    const sourceIds: number[] = []
+    if (page.sourceId !== undefined && page.sourceId !== null) {
+      const n = parseInt(String(page.sourceId), 10)
+      if (!isNaN(n)) sourceIds.push(n)
+    }
+    const pageSources = sourceIds
+      .map((id) => getSourceById(id))
+      .filter((s): s is NonNullable<typeof s> => s !== null)
+      .map((s) => ({
+        title: s.title ?? 'Source',
+        url: s.url ?? undefined,
+        raw_content: s.raw_content ?? '',
+      }))
+
+    const relatedPages = ((relatedResponse as any)?.sources ?? [])
+      .filter((s: any) => ((s.document_metadata?.slug as string) || s.id) !== page.slug)
+      .slice(0, 5)
+      .map((s: any) => ({
+        slug: (s.document_metadata?.slug as string) || s.id,
+        title: s.title ?? 'Unknown',
+        summary: (s.document_metadata?.summary as string) || '',
+        type: (s.document_metadata?.category as string) || 'concept',
+      }))
+
+    return {
+      page: {
+        slug: page.slug,
+        title: page.title || 'Unknown Title',
+        type: page.type,
+        summary: page.summary,
+        content: page.content.replace(/^#\s+.+\n+/, ''),
+        sources: pageSources,
+        created_at: page.timestamp || '',
+      },
+      relatedPages,
+      backlinks,
+    }
+  } catch (err) {
+    console.error(`[getPage] error for slug ${slug}:`, err)
+    return null
+  }
 }
 
-async function getChildren(slug: string) {
+async function getChildren(slug: string, tenantId: string) {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/wiki/${slug}/children`, { cache: 'no-store' })
-    if (!res.ok) return []
-    const data = await res.json()
-    return data.children ?? []
-  } catch { return [] }
+    const items = await listAllKnowledgeRaw(tenantId)
+
+    const slugSet = new Set(items.map((i: any) => (i.document_metadata?.slug as string) || i.id))
+    const childSlugs = new Set<string>()
+
+    // (a) Breakdown-derived children
+    for (const item of items) {
+      const meta = item.document_metadata ?? {}
+      const bs = meta.breakdownSource
+      if (bs) {
+        const sources = Array.isArray(bs) ? bs : [bs]
+        if (sources.includes(slug)) {
+          childSlugs.add((meta.slug as string) || item.id)
+        }
+      }
+    }
+
+    // (b) Outlinks from page_links
+    const linkedRows = db.prepare(
+      `SELECT target_slug FROM page_links WHERE source_slug = ?`
+    ).all(slug) as Array<{ target_slug: string }>
+    for (const r of linkedRows) {
+      if (slugSet.has(r.target_slug) && r.target_slug !== slug) {
+        childSlugs.add(r.target_slug)
+      }
+    }
+
+    const itemMap = new Map(
+      items.map((i: any) => [(i.document_metadata?.slug as string) || i.id, i])
+    )
+
+    return Array.from(childSlugs)
+      .map(s => {
+        const item = itemMap.get(s)
+        if (!item) return null
+        const meta = item.document_metadata ?? {}
+        return {
+          slug: s,
+          title: (item.title as string) || s,
+          type: (meta.category as string) || 'concept',
+          summary: (meta.summary as string) || '',
+        }
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null)
+  } catch (err) {
+    console.error(`[getChildren] error for slug ${slug}:`, err)
+    return []
+  }
 }
 
 function SidebarSection({ kicker, children }: { kicker: string; children: React.ReactNode }) {
@@ -97,8 +206,15 @@ function SidebarLink({ href, label, type }: { href: string; label: string; type?
 }
 
 export default async function WikiPage({ params }: { params: Promise<{ slug: string }> }) {
+  const session = await getServerSession(authOptions)
   const { slug } = await params
-  const [data, children] = await Promise.all([getPage(slug), getChildren(slug)])
+  if (!session?.user) {
+    redirect(`/auth/signin?callbackUrl=${encodeURIComponent(`/wiki/${slug}`)}`)
+  }
+  const userId = (session.user as any).id as string
+  const tenantId = `user-${userId}`
+
+  const [data, children] = await Promise.all([getPage(slug, tenantId), getChildren(slug, tenantId)])
   if (!data) {
     const aliasTarget = resolveSlugAlias(slug)
     if (aliasTarget && aliasTarget !== slug) redirect(`/wiki/${aliasTarget}`)
