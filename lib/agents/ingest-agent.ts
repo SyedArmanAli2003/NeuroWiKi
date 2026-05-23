@@ -3,9 +3,9 @@ import { loggedGenerateObject } from '@/lib/llm'
 import { llm } from '../llm'
 import { z } from 'zod'
 import { ensureTenant, hydra, waitForIngestion } from '../hydra'
-import { upsertPageHealth, upsertPageLinks, getAllPages, enqueueReindex } from '../db-helpers'
 import { findExistingPage, absorbIntoExisting, findDuplicateSlug } from './absorb-agent'
 import { listPageMeta } from '../hydra-fetch'
+import { createWikiPage, updateWikiPage, getWikiPageBySlug, getAllWikiPages } from '../firestore-db'
 
 export interface IngestResult {
   pagesCreated: number
@@ -88,10 +88,13 @@ Return JSON with a "pages" key containing an array. Each page must include:
   const pages: Array<{ slug: string; title: string; type: string; content: string; isNew: boolean; indexed: boolean }> = []
   let pagesCreated = 0
 
+  const userId = tenantId.startsWith('user-') ? tenantId.replace('user-', '') : tenantId
+
   // Collect existing hydra_doc_ids to forcefully relate new pages to them
-  const existingHydraIds = getAllPages()
-    .map((p) => p.hydra_doc_id)
-    .filter((id): id is string => !!id)
+  const firestorePages = await getAllWikiPages(userId)
+  const existingHydraIds = firestorePages
+    .map((p) => p.slug)
+    .filter(Boolean)
 
   // Track real source IDs of pages uploaded in this batch for sibling cross-linking
   const batchHydraIds: string[] = []
@@ -150,58 +153,72 @@ Return JSON with a "pages" key containing an array. Each page must include:
       // All existing pages + siblings already uploaded this batch
       const cortexSourceIds = [...existingHydraIds, ...batchHydraIds].filter(Boolean)
 
-      const uploadResponse = await hydra.upload.knowledge({
-        tenant_id: tenantId,
-        upsert: true,
-        app_knowledge: JSON.stringify([
-          {
-            tenant_id: tenantId,
-            sub_tenant_id: 'default',
-            id: page.slug,
-            title: page.title,
-            type: 'document',
-            content: {
-              markdown: `# ${page.title}\n\n${finalContent}`,
+      let uploadResponse: any = null
+      try {
+        uploadResponse = await hydra.upload.knowledge({
+          tenant_id: tenantId,
+          upsert: true,
+          app_knowledge: JSON.stringify([
+            {
+              tenant_id: tenantId,
+              sub_tenant_id: 'default',
+              id: page.slug,
+              title: page.title,
+              type: 'document',
+              content: {
+                markdown: `# ${page.title}\n\n${finalContent}`,
+              },
+              document_metadata: {
+                category: page.type,
+                summary: finalSummary,
+                sourceSentences: finalSourceSentences,
+                verified: true,
+                verifiedAt: new Date().toISOString(),
+                sourceId: sourceId.toString(),
+                slug: page.slug,
+              },
+              ...(cortexSourceIds.length > 0 && {
+                relations: { cortex_source_ids: cortexSourceIds },
+              }),
             },
-            document_metadata: {
-              category: page.type,
-              summary: finalSummary,
-              sourceSentences: finalSourceSentences,
-              verified: true,
-              verifiedAt: new Date().toISOString(),
-              sourceId: sourceId.toString(),
-              slug: page.slug,
-            },
-            ...(cortexSourceIds.length > 0 && {
-              relations: { cortex_source_ids: cortexSourceIds },
-            }),
-          },
-        ]),
-      }) as any
+          ]),
+        })
+      } catch (hydraErr: any) {
+        console.error(`[ingest] HydraDB upload failed for ${page.slug}, continuing with Firestore:`, hydraErr?.message)
+      }
 
       // Use real source_id from upload response for status polling
       const realSourceId = uploadResponse?.results?.[0]?.source_id ?? page.slug
       batchHydraIds.push(realSourceId)
-      const ready = await waitForIngestion(realSourceId, tenantId)
+      let ready = false
+      if (uploadResponse) {
+        ready = await waitForIngestion(realSourceId, tenantId)
+      }
 
       try {
-        upsertPageHealth({
-          slug: page.slug,
-          title: page.title,
-          type: page.type,
-          summary: finalSummary,
-          source_id: sourceId,
-          confidence: ready ? 100 : 60,
-          stale_reason: ready ? undefined : 'Indexing may be incomplete',
-          hydra_doc_id: realSourceId,
-        })
-
-        // Parse [[wikilinks]] from content and store graph edges in SQLite
         const linkedSlugs = [...finalContent.matchAll(/\[\[([^\]]+)\]\]/g)].map(m => m[1].trim())
-        if (linkedSlugs.length) upsertPageLinks(page.slug, linkedSlugs)
-      } catch (sqliteErr: any) {
-        console.error(`[ingest] SQLite write failed for ${page.slug}, queuing for reindex:`, sqliteErr?.message)
-        enqueueReindex(realSourceId)
+        
+        const existingDoc = await getWikiPageBySlug(userId, page.slug)
+        if (existingDoc) {
+          await updateWikiPage(userId, existingDoc.id, {
+            title: page.title,
+            content: finalContent,
+            type: page.type,
+            summary: finalSummary,
+            wikilinks: linkedSlugs,
+          })
+        } else {
+          await createWikiPage(userId, {
+            slug: page.slug,
+            title: page.title,
+            content: finalContent,
+            type: page.type,
+            summary: finalSummary,
+            wikilinks: linkedSlugs,
+          })
+        }
+      } catch (firestoreErr: any) {
+        console.error(`[ingest] Firestore write failed for ${page.slug}:`, firestoreErr?.message)
       }
 
       pages.push({

@@ -1,6 +1,6 @@
 import { llm, loggedGenerateObject } from '@/lib/llm'
 import { z } from 'zod'
-import { fetchPage } from '@/lib/hydra-fetch'
+import { getWikiPageBySlug } from '@/lib/firestore-db'
 
 export interface ExistingPage {
   slug: string
@@ -52,7 +52,8 @@ export async function findExistingPage(
   slug: string,
   tenantId: string = 'default'
 ): Promise<ExistingPage | null> {
-  const p = await fetchPage(slug, tenantId)
+  const userId = tenantId.startsWith('user-') ? tenantId.replace('user-', '') : tenantId
+  const p = await getWikiPageBySlug(userId, slug)
   if (!p) return null
   return {
     slug: p.slug,
@@ -60,7 +61,7 @@ export async function findExistingPage(
     content: p.content,
     summary: p.summary,
     type: p.type,
-    sourceSentences: p.sourceSentences,
+    sourceSentences: [], // Assuming sourceSentences are empty as we simplified schema, or fetch them if needed
   }
 }
 

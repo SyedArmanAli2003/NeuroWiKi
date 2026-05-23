@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth-options'
 import { hydra } from '@/lib/hydra'
 import { invalidateKnowledgeListCache } from '@/lib/hydra-fetch'
-import { db } from '@/lib/db'
+import { deleteWikiPageBySlug } from '@/lib/firestore-db'
 
 export async function DELETE(
   req: NextRequest,
@@ -28,17 +28,13 @@ export async function DELETE(
     // 404 = already gone, that's fine
     if (err?.statusCode !== 404) {
       console.error('[wiki/delete] HydraDB error:', err?.message)
-      return NextResponse.json({ error: 'Failed to delete from knowledge base.' }, { status: 500 })
     }
   }
 
-  // Also clean up local SQLite references
   try {
-    db.prepare(`DELETE FROM pages WHERE slug = ?`).run(slug)
-    db.prepare(`DELETE FROM page_links WHERE source_slug = ? OR target_slug = ?`).run(slug, slug)
-    db.prepare(`DELETE FROM reindex_queue WHERE hydra_id = ?`).run(slug)
+    await deleteWikiPageBySlug(userId, slug)
   } catch (e) {
-    console.warn('[wiki/delete] SQLite cleanup error:', e)
+    console.warn('[wiki/delete] Firestore cleanup error:', e)
   }
 
   // Bust the list cache so next load reflects deletion

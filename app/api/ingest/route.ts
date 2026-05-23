@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { extract } from '@extractus/article-extractor'
 import pdfParse from 'pdf-parse'
 import mammoth from 'mammoth'
-import { createSource, createLog, processReindexQueue } from '@/lib/db-helpers'
+import { createSource, createLog, getAllWikiPages } from '@/lib/firestore-db'
 import { runIngestAgent } from '@/lib/agents/ingest-agent'
 import { runConsistencyCheck } from '@/lib/agents/consistency-agent'
 import { hydra } from '@/lib/hydra'
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       const send = (msg: string) => controller.enqueue(encoder.encode(msg + '\n'))
 
       // Best-effort: drain reindex queue from previous failed ingest runs
-      processReindexQueue(async () => null)
+      // processReindexQueue(async () => null) // Removed as we use Firestore now
 
       try {
         const { text, url } = body
@@ -137,9 +137,9 @@ export async function POST(req: NextRequest) {
             const { text: fileText, title } = parsed[i]
             send(`Processing file ${i + 1} of ${parsed.length}: ${title}...`)
             if (!fileText.trim()) throw new Error(`File "${title}" appears to be empty.`)
-            const source = createSource({ url: null, title, raw_content: fileText, processed: 0 })
-            const result = await runIngestAgent(fileText, source.id, tenantId)
-            createLog({ source_id: source.id, pages_created: result.pagesCreated, pages_updated: 0, message: `Successfully created ${result.pagesCreated} pages.` })
+            const sourceId = await createSource(userId, { url: null, title, raw_content: fileText, processed: 0 })
+            const result = await runIngestAgent(fileText, Number(sourceId.replace(/\D/g, '') || 0), tenantId)
+            await createLog(userId, { source_id: sourceId, pages_created: result.pagesCreated, pages_updated: 0, message: `Successfully created ${result.pagesCreated} pages.` })
             allPages = allPages.concat(result.pages)
             totalCreated += result.pagesCreated
             if (result.pages.some((p: any) => !p.indexed)) hasIndexingWarning = true
@@ -178,9 +178,9 @@ export async function POST(req: NextRequest) {
                   sourceTitle = scraped.title
                 }
 
-                const source = createSource({ url: u, title: sourceTitle, raw_content: sourceText, processed: 0 })
-                const result = await runIngestAgent(sourceText, source.id, tenantId)
-                createLog({ source_id: source.id, pages_created: result.pagesCreated, pages_updated: 0, message: `Successfully created ${result.pagesCreated} pages.` })
+                const sourceId = await createSource(userId, { url: u, title: sourceTitle, raw_content: sourceText, processed: 0 })
+                const result = await runIngestAgent(sourceText, Number(sourceId.replace(/\D/g, '') || 0), tenantId)
+                await createLog(userId, { source_id: sourceId, pages_created: result.pagesCreated, pages_updated: 0, message: `Successfully created ${result.pagesCreated} pages.` })
                 allPages = allPages.concat(result.pages)
                 totalCreated += result.pagesCreated
                 if (result.pages.some((p: any) => !p.indexed)) hasIndexingWarning = true
@@ -198,11 +198,11 @@ export async function POST(req: NextRequest) {
           } else if (text) {
             if (!text.trim()) throw new Error('Source text is empty')
             send('Saving source to local database...')
-            const source = createSource({ url: null, title: 'Manual Text Entry', raw_content: text, processed: 0 })
+            const sourceId = await createSource(userId, { url: null, title: 'Manual Text Entry', raw_content: text, processed: 0 })
             send('AI is analyzing content...')
-            const result = await runIngestAgent(text, source.id, tenantId)
+            const result = await runIngestAgent(text, Number(sourceId.replace(/\D/g, '') || 0), tenantId)
             send('Storing logs...')
-            createLog({ source_id: source.id, pages_created: result.pagesCreated, pages_updated: 0, message: `Successfully created ${result.pagesCreated} pages.` })
+            await createLog(userId, { source_id: sourceId, pages_created: result.pagesCreated, pages_updated: 0, message: `Successfully created ${result.pagesCreated} pages.` })
             allPages = result.pages
             totalCreated = result.pagesCreated
             hasIndexingWarning = result.pages.some((p: any) => !p.indexed)
@@ -215,9 +215,8 @@ export async function POST(req: NextRequest) {
         send('Checking consistency...')
         let allExistingSlugs: string[] = []
         try {
-          const res = (await hydra.fetch.listData({ tenant_id: tenantId, kind: 'knowledge', page: 1, page_size: 100 })) as any
-          const items: any[] = res?.sources ?? []
-          allExistingSlugs = items.map((item: any) => (item.document_metadata?.slug as string) || item.id)
+          const firestorePages = await getAllWikiPages(userId)
+          allExistingSlugs = firestorePages.map((item) => item.slug)
         } catch (e) {
           console.warn('Failed to fetch slugs for consistency check', e)
         }

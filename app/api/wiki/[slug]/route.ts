@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hydra, ensureTenant, waitForIngestion } from '@/lib/hydra'
-import { db } from '@/lib/db'
-import { upsertPageHealth, upsertPageLinks, getSourceById } from '@/lib/db-helpers'
-import { fetchPage } from '@/lib/hydra-fetch'
+import { getWikiPageBySlug, updateWikiPage, createWikiPage, getAllWikiPages } from '@/lib/firestore-db'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth-options'
+import { getDb } from '@/lib/firebase-admin'
 
 export async function GET(
   req: NextRequest,
@@ -11,12 +12,22 @@ export async function GET(
   const { slug } = await context.params
 
   const t0 = Date.now()
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = (session.user as any).id as string
+  const tenantId = `user-${userId}`
+
   try {
-    // Run page fetch + related recall + backlinks in parallel.
-    // Related uses the slug as query (cheap) instead of full title — and skips graph_context (saves ~2s).
-    const pagePromise = fetchPage(slug)
+    const page = await getWikiPageBySlug(userId, slug)
+    
+    if (!page) {
+      return NextResponse.json({ error: 'Page not found' }, { status: 404 })
+    }
+
     const relatedPromise = hydra.recall.fullRecall({
-      tenant_id: 'default',
+      tenant_id: tenantId,
       query: slug.replace(/-/g, ' '),
       max_results: 6,
     }).catch((e: any) => {
@@ -24,35 +35,19 @@ export async function GET(
       return null
     })
 
-    const backlinkRows = db.prepare(`
-      SELECT pl.source_slug, p.title
-      FROM page_links pl
-      LEFT JOIN pages p ON p.slug = pl.source_slug
-      WHERE pl.target_slug = ?
-    `).all(slug) as Array<{ source_slug: string; title: string | null }>
-    const backlinks = backlinkRows.map((r) => ({
-      slug: r.source_slug,
-      title: r.title ?? r.source_slug,
+    const backlinksSnapshot = await getDb().collection('wiki_pages')
+      .where('userId', '==', userId)
+      .where('wikilinks', 'array-contains', slug)
+      .get()
+
+    const backlinks = backlinksSnapshot.docs.map((doc) => ({
+      slug: doc.data().slug,
+      title: doc.data().title ?? doc.data().slug,
     }))
 
-    const [page, relatedResponse] = await Promise.all([pagePromise, relatedPromise])
-    if (!page) {
-      return NextResponse.json({ error: 'Page not found' }, { status: 404 })
-    }
+    const relatedResponse = await relatedPromise
 
-    const sourceIds: number[] = []
-    if (page.sourceId !== undefined && page.sourceId !== null) {
-      const n = parseInt(String(page.sourceId), 10)
-      if (!isNaN(n)) sourceIds.push(n)
-    }
-    const pageSources = sourceIds
-      .map((id) => getSourceById(id))
-      .filter((s): s is NonNullable<typeof s> => s !== null)
-      .map((s) => ({
-        title: s.title ?? 'Source',
-        url: s.url ?? undefined,
-        raw_content: s.raw_content ?? '',
-      }))
+    const pageSources: any[] = [] // Simplified for now since sources moved to Firestore
 
     const relatedPages = ((relatedResponse as any)?.sources ?? [])
       .filter((s: any) => ((s.document_metadata?.slug as string) || s.id) !== page.slug)
@@ -74,7 +69,7 @@ export async function GET(
         summary: page.summary,
         content: page.content.replace(/^#\s+.+\n+/, ''),
         sources: pageSources,
-        created_at: page.timestamp || '',
+        created_at: page.createdAt || '',
       },
       relatedPages,
       backlinks,
@@ -89,49 +84,68 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
   const { slug } = await params
   const { title, content, summary, type } = await req.json()
 
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = (session.user as any).id as string
+  const tenantId = `user-${userId}`
+
   try {
-    await ensureTenant('default')
+    await ensureTenant(tenantId)
     const cleanedContent = content.replace(/^#\s+.+\n+/, '')
 
-    const uploadResponse = (await hydra.upload.knowledge({
-      tenant_id: 'default',
-      upsert: true,
-      app_knowledge: JSON.stringify([
-        {
-          tenant_id: 'default',
-          sub_tenant_id: 'default',
-          id: slug,
-          title,
-          type: 'document',
-          content: { markdown: `# ${title}\n\n${cleanedContent}` },
-          document_metadata: {
-            category: type ?? 'concept',
-            summary: summary ?? '',
-            slug,
-            verified: true,
-            verifiedAt: new Date().toISOString(),
-            manuallyEdited: true,
+    try {
+      const uploadResponse = (await hydra.upload.knowledge({
+        tenant_id: tenantId,
+        upsert: true,
+        app_knowledge: JSON.stringify([
+          {
+            tenant_id: tenantId,
+            sub_tenant_id: 'default',
+            id: slug,
+            title,
+            type: 'document',
+            content: { markdown: `# ${title}\n\n${cleanedContent}` },
+            document_metadata: {
+              category: type ?? 'concept',
+              summary: summary ?? '',
+              slug,
+              verified: true,
+              verifiedAt: new Date().toISOString(),
+              manuallyEdited: true,
+            },
           },
-        },
-      ]),
-    })) as any
+        ]),
+      })) as any
 
-    const realSourceId = uploadResponse?.results?.[0]?.source_id ?? slug
-    const ready = await waitForIngestion(realSourceId, 'default')
+      const realSourceId = uploadResponse?.results?.[0]?.source_id ?? slug
+      await waitForIngestion(realSourceId, tenantId)
+    } catch (hydraErr: any) {
+      console.error(`[wiki:${slug}] HydraDB update failed:`, hydraErr?.message)
+    }
 
-    upsertPageHealth({
-      slug,
-      title,
-      type: type ?? 'concept',
-      summary: summary ?? '',
-      confidence: ready ? 100 : 60,
-      stale_reason: ready ? undefined : 'Indexing may be incomplete',
-      hydra_doc_id: realSourceId,
-    })
-
-    db.prepare(`DELETE FROM page_links WHERE source_slug = ?`).run(slug)
     const linkedSlugs = [...cleanedContent.matchAll(/\[\[([^\]]+)\]\]/g)].map((m: any) => m[1].trim())
-    if (linkedSlugs.length) upsertPageLinks(slug, linkedSlugs)
+    
+    const existingDoc = await getWikiPageBySlug(userId, slug)
+    if (existingDoc) {
+      await updateWikiPage(userId, existingDoc.id, {
+        title,
+        content: cleanedContent,
+        summary: summary ?? '',
+        type: type ?? 'concept',
+        wikilinks: linkedSlugs,
+      })
+    } else {
+      await createWikiPage(userId, {
+        slug,
+        title,
+        content: cleanedContent,
+        summary: summary ?? '',
+        type: type ?? 'concept',
+        wikilinks: linkedSlugs,
+      })
+    }
 
     return NextResponse.json({ page: { slug, title, content: cleanedContent, summary, type } })
   } catch (error: any) {

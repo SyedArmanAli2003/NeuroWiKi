@@ -380,22 +380,51 @@ export default function Home() {
       </section>
 
       {/* ── Footer ────────────────────────────────────── */}
-      <footer className="px-6 py-10 border-t border-[rgba(255,255,255,0.04)]">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="kicker" style={{ letterSpacing: '0.15em' }}>NeuroWiki</span>
-          <p className="text-xs" style={{ color: 'rgba(245,245,244,0.25)' }}>
-            © {new Date().getFullYear()} NeuroWiki. Your knowledge. Your control.
-          </p>
-          <div className="flex items-center gap-4">
-            {status === 'authenticated' ? (
-              <Link href="/wiki" className="text-xs" style={{ color: 'rgba(245,245,244,0.35)', textDecoration: 'none' }}>
-                My Wiki
-              </Link>
-            ) : (
-              <Link href="/auth/signup" className="text-xs" style={{ color: '#d4a574', textDecoration: 'none' }}>
-                Get started →
-              </Link>
-            )}
+      <footer className="bg-black text-[#888]">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 px-8 py-16">
+            
+            {/* Left column - 40% */}
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 bg-[#e8e4d8] text-black flex items-center justify-center font-bold text-xs rounded-sm">N</div>
+                <span className="text-[#e8e4d8] font-bold tracking-widest text-sm uppercase">Neurowiki</span>
+              </div>
+              <p className="text-sm leading-relaxed max-w-sm">
+                Your personal memory agent. Store, connect, and retrieve your knowledge with AI-powered intelligence.
+              </p>
+            </div>
+
+            {/* Middle column - 30% */}
+            <div className="flex flex-col gap-4">
+              <h4 className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-2">PRODUCT</h4>
+              <nav className="flex flex-col gap-3">
+                <Link href="/wiki" className="text-sm hover:text-white transition-colors duration-200">Wiki</Link>
+                <Link href="/ingest" className="text-sm hover:text-white transition-colors duration-200">Add Source</Link>
+                <Link href="/search" className="text-sm hover:text-white transition-colors duration-200">Search</Link>
+                <Link href="/graph" className="text-sm hover:text-white transition-colors duration-200">Graph</Link>
+              </nav>
+            </div>
+
+            {/* Right column - 30% */}
+            <div className="flex flex-col gap-4">
+              <h4 className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-2">RESOURCES</h4>
+              <nav className="flex flex-col gap-3">
+                <Link href="/docs" className="text-sm hover:text-white transition-colors duration-200">Documentation</Link>
+                <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-sm hover:text-white transition-colors duration-200 flex items-center gap-1">
+                  GitHub <span className="text-[10px]">↗</span>
+                </a>
+              </nav>
+            </div>
+          </div>
+
+          {/* Bottom bar */}
+          <div className="px-8 pb-8">
+            <div className="flex justify-between text-xs text-gray-600 border-t border-gray-800 pt-6">
+              <span className="hidden sm:inline">Built with Hydra DB and AI</span>
+              <span className="text-center w-full sm:w-auto">© {new Date().getFullYear()} NeuroWiki. Your knowledge. Your control.</span>
+              <span className="hidden sm:inline">MIT License</span>
+            </div>
           </div>
         </div>
       </footer>

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth-options'
-import { listAllKnowledgeRaw } from '@/lib/hydra-fetch'
 import { ensureTenant } from '@/lib/hydra'
+import { getAllWikiPages } from '@/lib/firestore-db'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,15 +21,15 @@ export async function GET(req: NextRequest) {
   const onlyDiary    = searchParams.get('onlyDiary')    === '1'
 
   try {
-    const items = await listAllKnowledgeRaw(tenantId)
+    const firestorePages = await getAllWikiPages(userId)
 
-    const allPages = items.map((item: any) => ({
-      slug:       (item.document_metadata?.slug  as string) || item.id,
-      title:      (item.title                    as string) || '',
-      type:       (item.document_metadata?.category as string) || 'concept',
-      summary:    (item.document_metadata?.summary  as string) || '',
-      updated_at: (item.document_metadata?.verifiedAt as string) || (item.timestamp as string) || '',
-      hydra_id:   item.id as string,
+    const allPages = firestorePages.map((item) => ({
+      slug:       item.slug,
+      title:      item.title,
+      type:       item.type || 'concept',
+      summary:    item.summary || '',
+      updated_at: item.updatedAt || item.createdAt || '',
+      hydra_id:   item.id, // using firestore document ID as hydra_id equivalent
     }))
 
     let pages = allPages
