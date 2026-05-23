@@ -112,6 +112,9 @@ export function Footer() {
           <p className="text-[11px]" style={{ color: 'rgba(245, 245, 244, 0.25)' }}>
             Built with Hydra DB and AI
           </p>
+          <p className="text-[11px] text-center" style={{ color: 'rgba(245, 245, 244, 0.25)' }}>
+            &copy; {new Date().getFullYear()} NeuroWiki. Your knowledge. Your control.
+          </p>
           <p className="text-[11px]" style={{ color: 'rgba(245, 245, 244, 0.25)' }}>
             MIT License
           </p>

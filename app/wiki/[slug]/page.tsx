@@ -5,6 +5,10 @@ import { StickyTitle } from '@/components/StickyTitle'
 import { WikiEditAgent } from '@/components/WikiEditAgent'
 import { WikiActionsMenu } from '@/components/WikiActionsMenu'
 import { resolveSlugAlias } from '@/lib/db-helpers'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth-options'
+import { getWikiPageBySlug, getAllWikiPages } from '@/lib/firestore-db'
+import { getDb } from '@/lib/firebase-admin'
 
 const TYPE_COLORS: Record<string, { color: string; bg: string; border: string }> = {
   concept:      { color: '#C7B8FF', bg: 'rgba(199,184,255,0.07)', border: 'rgba(199,184,255,0.22)' },
@@ -53,23 +57,6 @@ function extractHeadings(content: string) {
     }))
 }
 
-async function getPage(slug: string) {
-  try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/wiki/${slug}`, { cache: 'no-store' })
-    if (!res.ok) return null
-    return res.json()
-  } catch { return null }
-}
-
-async function getChildren(slug: string) {
-  try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/wiki/${slug}/children`, { cache: 'no-store' })
-    if (!res.ok) return []
-    const data = await res.json()
-    return data.children ?? []
-  } catch { return [] }
-}
-
 function SidebarSection({ kicker, children }: { kicker: string; children: React.ReactNode }) {
   return (
     <div>
@@ -98,15 +85,63 @@ function SidebarLink({ href, label, type }: { href: string; label: string; type?
 
 export default async function WikiPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const [data, children] = await Promise.all([getPage(slug), getChildren(slug)])
-  if (!data) {
-    const aliasTarget = resolveSlugAlias(slug)
-    if (aliasTarget && aliasTarget !== slug) redirect(`/wiki/${aliasTarget}`)
+
+  // Auth check — must be authenticated to view wiki pages
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    redirect('/auth/signin')
+  }
+  const userId = (session.user as any).id as string
+
+  // Fetch page directly from Firestore (no HTTP fetch = no auth cookie issue)
+  const page = await getWikiPageBySlug(userId, slug).catch(() => null)
+
+  if (!page) {
+    // Try slug alias resolution as a fallback
+    try {
+      const aliasTarget = resolveSlugAlias(slug)
+      if (aliasTarget && aliasTarget !== slug) redirect(`/wiki/${aliasTarget}`)
+    } catch {}
     notFound()
   }
 
-  const { page, relatedPages = [], backlinks = [] } = data
-  const headings = extractHeadings(page.content)
+  // Fetch backlinks from Firestore
+  let backlinks: { slug: string; title: string }[] = []
+  try {
+    const backlinksSnapshot = await getDb().collection('wiki_pages')
+      .where('userId', '==', userId)
+      .where('wikilinks', 'array-contains', slug)
+      .get()
+    backlinks = backlinksSnapshot.docs.map((doc) => ({
+      slug: doc.data().slug,
+      title: doc.data().title ?? doc.data().slug,
+    }))
+  } catch (e) {
+    console.warn('[wiki/slug] backlinks fetch failed:', e)
+  }
+
+  // Fetch related pages from Firestore (pages sharing wikilinks or type)
+  let relatedPages: { slug: string; title: string; type: string; summary: string }[] = []
+  try {
+    const allUserPages = await getAllWikiPages(userId)
+    relatedPages = allUserPages
+      .filter((p) => p.slug !== slug && (
+        p.type === page.type ||
+        (p.wikilinks && p.wikilinks.includes(slug))
+      ))
+      .slice(0, 5)
+      .map((p) => ({
+        slug: p.slug,
+        title: p.title,
+        type: p.type,
+        summary: p.summary || '',
+      }))
+  } catch (e) {
+    console.warn('[wiki/slug] related pages fetch failed:', e)
+  }
+
+  const headings = extractHeadings(page.content || '')
+  const children: { slug: string; title: string; type: string }[] = []
 
   return (
     <div className="app-canvas min-h-screen" style={{ background: '#000' }}>
@@ -151,7 +186,7 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
           </h1>
 
           <p className="serif" style={{ fontSize: 'var(--fs-body-sm)', color: 'var(--ink-mute)', letterSpacing: 0 }}>
-            {readingTime(page.content)}
+            {readingTime(page.content || '')}
           </p>
 
           {page.summary && (
@@ -193,25 +228,13 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
                 </div>
               </details>
             )}
-            {children?.length > 0 && (
-              <details style={{ border: '1px solid var(--hair)', borderRadius: 8, background: 'var(--surface)' }}>
-                <summary className="kicker" style={{ padding: '10px 14px', cursor: 'pointer', color: 'var(--ink-soft)', userSelect: 'none' }}>
-                  Pages in this topic · {children.length}
-                </summary>
-                <div className="flex flex-col" style={{ padding: '4px 14px 10px' }}>
-                  {children.map((c: { slug: string; title: string; type: string }) => (
-                    <SidebarLink key={c.slug} href={`/wiki/${c.slug}`} label={c.title} type={c.type} />
-                  ))}
-                </div>
-              </details>
-            )}
             {relatedPages?.length > 0 && (
               <details style={{ border: '1px solid var(--hair)', borderRadius: 8, background: 'var(--surface)' }}>
                 <summary className="kicker" style={{ padding: '10px 14px', cursor: 'pointer', color: 'var(--ink-soft)', userSelect: 'none' }}>
                   Related · {relatedPages.length}
                 </summary>
                 <div className="flex flex-col" style={{ padding: '4px 14px 10px' }}>
-                  {relatedPages.map((r: { slug: string; title: string; type: string }) => (
+                  {relatedPages.map((r) => (
                     <SidebarLink key={r.slug} href={`/wiki/${r.slug}`} label={r.title} type={r.type} />
                   ))}
                 </div>
@@ -223,7 +246,7 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
                   Referenced by · {backlinks.length}
                 </summary>
                 <div className="flex flex-col gap-1.5" style={{ padding: '4px 14px 10px' }}>
-                  {backlinks.map((b: { slug: string; title: string }) => (
+                  {backlinks.map((b) => (
                     <Link key={b.slug} href={`/wiki/${b.slug}`} style={{ fontSize: 'var(--fs-body-sm)', color: 'var(--ink-mute)' }}>← {b.title}</Link>
                   ))}
                 </div>
@@ -249,80 +272,10 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
                       lineHeight: 1.6,
                     }}
                   >
-                    This page has no content yet. It may have been created as a stub from a wikilink or an enrichment pass that failed. Re-ingest the source or use <span style={{ color: 'var(--ink-soft)' }}>Edit with AI</span> to fill it in.
+                    This page has no content yet. Re-ingest the source or use <span style={{ color: 'var(--ink-soft)' }}>Edit with AI</span> to fill it in.
                   </div>
                 )}
               </div>
-
-              {/* Sources */}
-              {page.sources?.length > 0 && (
-                <div className="mt-12 pt-8" style={{ borderTop: '1px solid var(--hair)' }}>
-                  <p className="kicker kicker-rule mb-4">Built from</p>
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    {page.sources.map((s: { title: string; url?: string }, i: number) => (
-                      <span
-                        key={i}
-                        className="rounded-full"
-                        style={{
-                          padding: '4px 11px',
-                          fontSize: 'var(--fs-kicker)',
-                          color: 'var(--ink-soft)',
-                          background: 'var(--surface)',
-                          border: '1px solid var(--hair)',
-                        }}
-                      >
-                        {s.title || 'Source'}
-                      </span>
-                    ))}
-                  </div>
-
-                  {page.sources.some((s: { raw_content?: string }) => s.raw_content) && (
-                    <div className="flex flex-col gap-3">
-                      {page.sources.map((s: { title: string; raw_content?: string }, i: number) => (
-                        s.raw_content ? (
-                          <details
-                            key={i}
-                            style={{
-                              border: '1px solid var(--hair)',
-                              borderRadius: '6px',
-                              background: 'var(--surface)',
-                            }}
-                          >
-                            <summary
-                              className="kicker"
-                              style={{
-                                padding: '10px 14px',
-                                cursor: 'pointer',
-                                color: 'var(--ink-soft)',
-                                userSelect: 'none',
-                              }}
-                            >
-                              View raw source — {s.title || 'Source'} ({s.raw_content.length.toLocaleString()} chars)
-                            </summary>
-                            <pre
-                              className="serif"
-                              style={{
-                                padding: '16px 18px',
-                                borderTop: '1px solid var(--hair)',
-                                fontSize: 'var(--fs-body-sm)',
-                                lineHeight: 1.7,
-                                color: 'var(--ink-soft)',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                                maxHeight: '60vh',
-                                overflowY: 'auto',
-                                fontFamily: 'inherit',
-                              }}
-                            >
-                              {s.raw_content}
-                            </pre>
-                          </details>
-                        ) : null
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </article>
 
             {/* Sidebar */}
@@ -353,7 +306,7 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
               {children?.length > 0 && (
                 <SidebarSection kicker="Pages in this topic">
                   <div className="flex flex-col">
-                    {children.map((c: { slug: string; title: string; type: string }) => (
+                    {children.map((c) => (
                       <SidebarLink key={c.slug} href={`/wiki/${c.slug}`} label={c.title} type={c.type} />
                     ))}
                   </div>
@@ -363,7 +316,7 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
               {relatedPages?.length > 0 && (
                 <SidebarSection kicker="Related pages">
                   <div className="flex flex-col">
-                    {relatedPages.map((r: { slug: string; title: string; type: string }) => (
+                    {relatedPages.map((r) => (
                       <SidebarLink key={r.slug} href={`/wiki/${r.slug}`} label={r.title} type={r.type} />
                     ))}
                   </div>
@@ -373,7 +326,7 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
               {backlinks?.length > 0 && (
                 <SidebarSection kicker="Referenced by">
                   <div className="flex flex-col gap-1.5">
-                    {backlinks.map((b: { slug: string; title: string }) => (
+                    {backlinks.map((b) => (
                       <Link
                         key={b.slug}
                         href={`/wiki/${b.slug}`}
@@ -390,8 +343,8 @@ export default async function WikiPage({ params }: { params: Promise<{ slug: str
               <SidebarSection kicker="Last updated">
                 <p style={{ fontSize: 'var(--fs-body-sm)', color: 'var(--ink-soft)' }}>
                   {(() => {
-                    const d = new Date(page.created_at)
-                    return page.created_at && !isNaN(d.getTime())
+                    const d = new Date(page.updatedAt || page.createdAt)
+                    return (page.updatedAt || page.createdAt) && !isNaN(d.getTime())
                       ? d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
                       : '—'
                   })()}
