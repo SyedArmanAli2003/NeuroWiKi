@@ -1,19 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hydra, ensureTenant, waitForIngestion } from '@/lib/hydra'
 import { upsertPageHealth, upsertPageLinks } from '@/lib/db-helpers'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-options'
+import { invalidateKnowledgeListCache } from '@/lib/hydra-fetch'
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = (session.user as any).id as string
+  const tenantId = `user-${userId}`
+
   try {
     const { question, answer, sourceChunks } = await req.json()
     if (!question?.trim() || !answer?.trim()) {
       return NextResponse.json({ error: 'question and answer required' }, { status: 400 })
     }
 
-    await ensureTenant('default')
+    await ensureTenant(tenantId)
 
     const slug = `synthesis-${slugify(question.slice(0, 40))}`
     const title = question.length > 60 ? question.slice(0, 57) + '...' : question
@@ -26,10 +36,10 @@ export async function POST(req: NextRequest) {
     const content = `## Question\n${question}\n\n## Answer\n${answer}${sources ? `\n\n## Sources\n${sources}` : ''}`
 
     const uploadResponse = await hydra.upload.knowledge({
-      tenant_id: 'default',
+      tenant_id: tenantId,
       upsert: true,
       app_knowledge: JSON.stringify([{
-        tenant_id: 'default',
+        tenant_id: tenantId,
         sub_tenant_id: 'default',
         id: slug,
         title,
@@ -45,7 +55,7 @@ export async function POST(req: NextRequest) {
     }) as any
 
     const realSourceId = uploadResponse?.results?.[0]?.source_id ?? slug
-    const ready = await waitForIngestion(realSourceId, 'default')
+    const ready = await waitForIngestion(realSourceId, tenantId)
 
     upsertPageHealth({
       slug,
@@ -59,6 +69,9 @@ export async function POST(req: NextRequest) {
     // Extract any [[wikilinks]] from the answer
     const linkedSlugs = [...answer.matchAll(/\[\[([^\]]+)\]\]/g)].map(m => m[1].trim())
     if (linkedSlugs.length) upsertPageLinks(slug, linkedSlugs)
+
+    // Bust the user's cache
+    invalidateKnowledgeListCache(tenantId)
 
     return NextResponse.json({ slug, title, ok: true })
   } catch (error: any) {

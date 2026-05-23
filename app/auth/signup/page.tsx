@@ -58,7 +58,7 @@ export default function SignUpPage() {
     if (result?.error) {
       router.push('/auth/signin')
     } else {
-      router.push('/')
+      window.location.href = '/'
     }
   }
 

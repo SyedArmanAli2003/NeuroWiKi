@@ -6,6 +6,10 @@ import { createSource, createLog, processReindexQueue } from '@/lib/db-helpers'
 import { runIngestAgent } from '@/lib/agents/ingest-agent'
 import { runConsistencyCheck } from '@/lib/agents/consistency-agent'
 import { hydra } from '@/lib/hydra'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth-options'
+import { invalidateKnowledgeListCache } from '@/lib/hydra-fetch'
+
 
 // ---------------------------------------------------------------------------
 // File parser — supports PDF, DOCX, TXT, MD
@@ -91,6 +95,15 @@ export async function POST(req: NextRequest) {
   if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return Response.json({ error: 'API key not configured' }, { status: 500 })
   }
+
+  // Require authentication — data must be scoped to a user
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId   = (session.user as any).id as string
+  const tenantId = `user-${userId}`
+
   const encoder = new TextEncoder()
   const contentType = req.headers.get('content-type') ?? ''
   let body: any = {}
@@ -127,7 +140,7 @@ export async function POST(req: NextRequest) {
             send(`Processing file ${i + 1} of ${parsed.length}: ${title}...`)
             if (!fileText.trim()) throw new Error(`File "${title}" appears to be empty.`)
             const source = createSource({ url: null, title, raw_content: fileText, processed: 0 })
-            const result = await runIngestAgent(fileText, source.id)
+            const result = await runIngestAgent(fileText, source.id, tenantId)
             createLog({ source_id: source.id, pages_created: result.pagesCreated, pages_updated: 0, message: `Successfully created ${result.pagesCreated} pages.` })
             allPages = allPages.concat(result.pages)
             totalCreated += result.pagesCreated
@@ -168,7 +181,7 @@ export async function POST(req: NextRequest) {
                 }
 
                 const source = createSource({ url: u, title: sourceTitle, raw_content: sourceText, processed: 0 })
-                const result = await runIngestAgent(sourceText, source.id)
+                const result = await runIngestAgent(sourceText, source.id, tenantId)
                 createLog({ source_id: source.id, pages_created: result.pagesCreated, pages_updated: 0, message: `Successfully created ${result.pagesCreated} pages.` })
                 allPages = allPages.concat(result.pages)
                 totalCreated += result.pagesCreated
@@ -189,7 +202,7 @@ export async function POST(req: NextRequest) {
             send('Saving source to local database...')
             const source = createSource({ url: null, title: 'Manual Text Entry', raw_content: text, processed: 0 })
             send('AI is analyzing content...')
-            const result = await runIngestAgent(text, source.id)
+            const result = await runIngestAgent(text, source.id, tenantId)
             send('Storing logs...')
             createLog({ source_id: source.id, pages_created: result.pagesCreated, pages_updated: 0, message: `Successfully created ${result.pagesCreated} pages.` })
             allPages = result.pages
@@ -204,7 +217,7 @@ export async function POST(req: NextRequest) {
         send('Checking consistency...')
         let allExistingSlugs: string[] = []
         try {
-          const res = (await hydra.fetch.listData({ tenant_id: 'default', kind: 'knowledge', page: 1, page_size: 100 })) as any
+          const res = (await hydra.fetch.listData({ tenant_id: tenantId, kind: 'knowledge', page: 1, page_size: 100 })) as any
           const items: any[] = res?.sources ?? []
           allExistingSlugs = items.map((item: any) => (item.document_metadata?.slug as string) || item.id)
         } catch (e) {
@@ -214,6 +227,8 @@ export async function POST(req: NextRequest) {
         const newSlugs = allPages.map((p: any) => p.slug)
         const existingSlugs = allExistingSlugs.filter(s => !newSlugs.includes(s))
         const consistency = await runConsistencyCheck(allPages, existingSlugs.slice(0, 20))
+
+        invalidateKnowledgeListCache(tenantId)
 
         send(JSON.stringify({
           final: true,

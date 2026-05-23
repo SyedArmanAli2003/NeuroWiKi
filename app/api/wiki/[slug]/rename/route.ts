@@ -9,6 +9,9 @@ import {
   getPageBySlug,
 } from '@/lib/db-helpers'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-options'
+import { invalidateKnowledgeListCache } from '@/lib/hydra-fetch'
 
 function isValidSlug(s: string): boolean {
   return /^[a-z0-9][a-z0-9-]{0,79}$/.test(s)
@@ -18,6 +21,13 @@ export async function POST(
   req: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = (session.user as any).id as string
+  const tenantId = `user-${userId}`
+
   const { slug: oldSlug } = await context.params
   const { newSlug, newTitle } = await req.json()
 
@@ -42,7 +52,7 @@ export async function POST(
   }
 
   try {
-    await ensureTenant('default')
+    await ensureTenant(tenantId)
 
     // Fetch content from HydraDB by direct source_id (more reliable than recall)
     let markdown = ''
@@ -53,7 +63,7 @@ export async function POST(
 
     try {
       const res = await hydra.fetch.listData({
-        tenant_id: 'default',
+        tenant_id: tenantId,
         kind: 'knowledge',
         source_ids: [existingPage.hydra_doc_id!],
       }) as any
@@ -89,10 +99,10 @@ export async function POST(
 
     // Re-upload under new id. HydraDB assigns a fresh source_id.
     const uploadResponse = await hydra.upload.knowledge({
-      tenant_id: 'default',
+      tenant_id: tenantId,
       upsert: true,
       app_knowledge: JSON.stringify([{
-        tenant_id: 'default',
+        tenant_id: tenantId,
         sub_tenant_id: 'default',
         id: normalized,
         title,
@@ -112,13 +122,13 @@ export async function POST(
     if (!newSourceId) {
       return NextResponse.json({ error: 'HydraDB upload returned no source_id' }, { status: 500 })
     }
-    await waitForIngestion(newSourceId, 'default')
+    await waitForIngestion(newSourceId, tenantId)
 
     // Delete old doc only if the slug changed (otherwise we just title-updated the same id)
     if (normalized !== oldSlug) {
       try {
         await hydra.upload.deleteMemory({
-          tenant_id: 'default',
+          tenant_id: tenantId,
           memory_id: existingPage.hydra_doc_id!,
         })
       } catch (e) {
@@ -141,6 +151,9 @@ export async function POST(
     db.prepare(`DELETE FROM page_links WHERE source_slug = ?`).run(normalized)
     const linkedSlugs = [...markdown.matchAll(/\[\[([^\]]+)\]\]/g)].map((m: any) => m[1].trim())
     if (linkedSlugs.length) upsertPageLinks(normalized, linkedSlugs)
+
+    // Bust the user's cache
+    invalidateKnowledgeListCache(tenantId)
 
     // Bust Next.js fetch + page caches so /wiki list and /wiki/[slug] reflect the rename
     revalidatePath('/wiki')

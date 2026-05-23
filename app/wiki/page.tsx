@@ -2,7 +2,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Download, ArrowRight } from 'lucide-react'
+import { Download, ArrowRight, Trash2 } from 'lucide-react'
+import { useSession } from 'next-auth/react'
 
 interface Page {
   slug: string
@@ -37,72 +38,121 @@ function relDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function PageCard({ page, index }: { page: Page; index: number }) {
+function PageCard({ page, index, onDelete }: { page: Page; index: number; onDelete: (slug: string) => void }) {
   const tc = TYPE_COLORS[page.type] ?? TYPE_COLORS.concept
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!confirm(`Delete "${page.title}"? This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/wiki/${page.slug}/delete`, { method: 'DELETE' })
+      if (res.ok) onDelete(page.slug)
+      else alert('Failed to delete. Please try again.')
+    } catch {
+      alert('Failed to delete. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.18), ease: [0.16, 1, 0.3, 1] }}
     >
-      <Link href={`/wiki/${page.slug}`} className="block app-card flex flex-col" style={{ minHeight: '160px', height: '100%' }}>
-        <div className="flex items-center justify-between mb-3">
-          <span
-            className="rounded capitalize"
-            style={{
-              padding: '2px 8px',
-              fontSize: 'var(--fs-micro)',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: tc.color,
-              background: tc.bg,
-              border: `1px solid ${tc.border}`,
-            }}
+      <div className="relative group/card">
+        <Link href={`/wiki/${page.slug}`} className="block app-card flex flex-col" style={{ minHeight: '160px', height: '100%' }}>
+          <div className="flex items-center justify-between mb-3">
+            <span
+              className="rounded capitalize"
+              style={{
+                padding: '2px 8px',
+                fontSize: 'var(--fs-micro)',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: tc.color,
+                background: tc.bg,
+                border: `1px solid ${tc.border}`,
+              }}
+            >
+              {page.type}
+            </span>
+          </div>
+
+          <h3 style={{ fontSize: 'var(--fs-body-sm)', fontWeight: 500, color: 'var(--ink-strong)', lineHeight: 1.3, letterSpacing: '-0.005em', marginBottom: '6px' }}>
+            {page.title}
+          </h3>
+
+          {page.summary && (
+            <p
+              style={{
+                fontSize: 'var(--fs-meta)',
+                color: 'var(--ink-soft)',
+                lineHeight: 1.55,
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                flex: 1,
+              }}
+            >
+              {page.summary}
+            </p>
+          )}
+
+          <div
+            className="flex items-center justify-between font-mono mt-auto pt-3"
+            style={{ fontSize: 'var(--fs-micro)', color: 'var(--ink-mute)', letterSpacing: '0.02em', borderTop: '1px solid var(--hair)' }}
           >
-            {page.type}
-          </span>
-        </div>
+            <span>{relDate(page.updated_at)}</span>
+            <span style={{ color: 'var(--ink-soft)' }}>→</span>
+          </div>
+        </Link>
 
-        <h3 style={{ fontSize: 'var(--fs-body-sm)', fontWeight: 500, color: 'var(--ink-strong)', lineHeight: 1.3, letterSpacing: '-0.005em', marginBottom: '6px' }}>
-          {page.title}
-        </h3>
-
-        {page.summary && (
-          <p
-            style={{
-              fontSize: 'var(--fs-meta)',
-              color: 'var(--ink-soft)',
-              lineHeight: 1.55,
-              display: '-webkit-box',
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              flex: 1,
-            }}
-          >
-            {page.summary}
-          </p>
-        )}
-
-        <div
-          className="flex items-center justify-between font-mono mt-auto pt-3"
-          style={{ fontSize: 'var(--fs-micro)', color: 'var(--ink-mute)', letterSpacing: '0.02em', borderTop: '1px solid var(--hair)' }}
+        {/* Delete button — shown on hover */}
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          title="Delete this wiki entry"
+          aria-label="Delete"
+          style={{
+            position: 'absolute', top: 10, right: 10,
+            width: 28, height: 28,
+            borderRadius: 8,
+            border: '1px solid rgba(239,68,68,0.2)',
+            background: 'rgba(239,68,68,0.06)',
+            color: '#f87171',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            opacity: 0,
+            transition: 'opacity 0.15s',
+          }}
+          className="group-hover/card:opacity-100"
         >
-          <span>{relDate(page.updated_at)}</span>
-          <span style={{ color: 'var(--ink-soft)' }}>→</span>
-        </div>
-      </Link>
+          {deleting ? <span style={{ width: 10, height: 10, border: '1.5px solid #f87171', borderTopColor: 'transparent', borderRadius: '50%', animation: 'auth-spin 0.6s linear infinite', display: 'block' }} /> : <Trash2 size={12} />}
+        </button>
+      </div>
     </motion.div>
   )
 }
 
 export default function WikiBrowserPage() {
-  const [pages, setPages] = useState<Page[]>([])
+  const { data: session } = useSession()
+  const [pages, setPages]       = useState<Page[]>([])
   const [captures, setCaptures] = useState<Page[]>([])
-  const [tab, setTab] = useState<'pages' | 'captures'>('pages')
-  const [filter, setFilter] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [tab, setTab]           = useState<'pages' | 'captures'>('pages')
+  const [filter, setFilter]     = useState<string | null>(null)
+  const [search, setSearch]     = useState('')
+  const [loading, setLoading]   = useState(true)
+
+  function handleDelete(slug: string) {
+    setPages((p) => p.filter((x) => x.slug !== slug))
+    setCaptures((p) => p.filter((x) => x.slug !== slug))
+  }
 
   useEffect(() => {
     Promise.all([
@@ -169,7 +219,7 @@ export default function WikiBrowserPage() {
                 Everything you know.
               </h1>
               <p className="serif mt-3" style={{ fontSize: 'var(--fs-quote)', color: 'var(--ink-soft)', letterSpacing: '-0.005em' }}>
-                Compiled. Connected. Yours.
+                {session?.user?.name ? `${session.user.name}'s wiki` : 'Compiled. Connected. Yours.'}
               </p>
             </div>
 
@@ -330,7 +380,7 @@ export default function WikiBrowserPage() {
                 </div>
                 <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
                   {items.map((p, i) => (
-                    <PageCard key={p.slug} page={p} index={i} />
+                    <PageCard key={p.slug} page={p} index={i} onDelete={handleDelete} />
                   ))}
                 </div>
               </section>
@@ -339,7 +389,7 @@ export default function WikiBrowserPage() {
         ) : (
           <div className="grid gap-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
             {filtered.map((p, i) => (
-              <PageCard key={p.slug} page={p} index={i} />
+              <PageCard key={p.slug} page={p} index={i} onDelete={handleDelete} />
             ))}
           </div>
         )}
